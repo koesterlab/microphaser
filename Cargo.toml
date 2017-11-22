@@ -1,0 +1,8 @@
+[package]
+name = "microphaser"
+version = "0.1.0"
+authors = ["Johannes Köster <johannes.koester@tu-dortmund.de>"]
+
+[dependencies]
+bio = "*"
+rust-htslib = "*"
