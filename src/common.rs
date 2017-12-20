@@ -5,10 +5,17 @@ pub enum Variant {
 }
 
 
+impl Variant {
+    pub fn new(rec: &bcf::Record) -> Self {
+        // TODO implement conversion
+    }
+}
+
+
 pub struct Gene {
-    name: String,
-    transcripts: Vec<Transcript>,
-    interval: Interval
+    pub name: String,
+    pub transcripts: Vec<Transcript>,
+    pub interval: Interval
 }
 
 
@@ -24,12 +31,12 @@ impl Gene {
 
 
 pub struct Transcript {
-    exons: Vec<Interval>
+    pub exons: Vec<Interval>
 }
 
 
 pub struct Interval {
-    chrom: String,
-    start: u32,
-    end: u32
+    pub chrom: String,
+    pub start: u32,
+    pub end: u32
 }
