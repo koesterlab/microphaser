@@ -11,6 +11,11 @@ use rust_htslib::prelude::*;
 use common::{Gene, Variant};
 
 
+pub fn bitvector_is_set(b: u64, k: u32) -> bool {
+    (b & (1 << k)) != 0
+}
+
+
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         Variant::SNV { pos: pos, alt: alt } => {
@@ -92,30 +97,66 @@ impl ObservationMatrix {
         self.variants.len() as u32
     }
 
-    pub fn print_haplotypes(&self, offset: u32, refseq: &[u8], fasta_writer: &mut fasta::Writer) {
+    pub fn print_haplotypes(
+        &self,
+        gene: &Gene,
+        offset: u32,
+        window_len: u32,
+        refseq: &[u8],
+        fasta_writer: &mut fasta::Writer
+    ) -> Result<(), Box<Error>> {
+        // count haplotypes
         let mut haplotypes = VecMap::new();
         for b in self.inner {
             haplotypes.entry(b).or_insert(0) += 1;
         }
         for (haplotype, count) in haplotypes.iter() {
+            // build haplotype sequence
+            let mut seq = Vec::with_capacity(window_len);
             let freq = count as f64 / self.inner.len();
-            let mut i = 0;
+            let mut i = offset;
             let mut j = 0;
-            while i < refseq.len() {
-                if i + offset == variants[j] {
-                    // get bit, if 1, print variant allele
+            while i < offset + window_len {
+                // TODO what happens if an insertion starts upstream of window and overlaps it
+                while i == variants[j].pos {
+                    if bitvector_is_set(haplotype, j) {
+                        match variants[j] {
+                            Variant::SNV { alt: a } => {
+                                seq.push(a);
+                                i += 1;
+                            },
+                            Variant::Insertion { seq: s } => {
+                                seq.extend(s);
+                                i += 1;
+                            },
+                            Variant::Deletion { len: l } => i += l
+                        }
+                        break;
+                    }
                 }
+                seq.push(refseq[i]);
+                i += 1
             }
+            // restrict to window len (it could be that we insert too much above)
+            seq = seq[..window_len];
+
+            fasta_writer.write(
+                format!("{}:offset={},af={:.2}", gene.name, offset, freq),
+                None,
+                &seq
+            )?;
         }
+        Ok(())
     }
 }
 
 
 pub fn microphasing(
-    gene: Gene,
-    fasta_reader: &mut fasta::IndexedReader,
+    gene: &Gene,
+    refseq: &[u8],
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::RecordBuffer,
+    fasta_writer: &mut fasta::Writer,
     window_len: u32
 ) {
     let observations = ObservationMatrix::new();
@@ -146,8 +187,7 @@ pub fn microphasing(
         observations.extend_right(variants);
 
         // print haplotypes
-
-
+        observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer);
 
         offset += 3;
     }
