@@ -1,14 +1,17 @@
 use std::error::Error;
+use std::collections::{VecDeque, BTreeMap};
+
+use itertools::Itertools;
 
 use vec_map::VecMap;
 
 use bio::io::fasta;
-use bio::io::gtf;
-use rust_htslib::bam;
+use bio::io::gff;
+use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
 use rust_htslib::prelude::*;
 
-use common::{Gene, Variant};
+use common::{Gene, Variant, Interval, Transcript};
 
 
 pub fn bitvector_is_set(b: u64, k: u32) -> bool {
@@ -46,24 +49,24 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 }
 
 
-pub struct ObservationMatrix {
+pub struct ObservationMatrix<'a> {
     inner: VecDeque<u64>,
-    reads: BTreeMap<u32, Vec<&bam::Record>>,
+    reads: BTreeMap<u32, Vec<&'a bam::Record>>,
     variants: VecDeque<Variant>
 }
 
 
-impl ObservationMatrix {
+impl<'a> ObservationMatrix<'a> {
     pub fn shrink_left(&mut self, k: u32) {
         self.variants.drain(..k);
-        for b in inner.iter_mut() {
+        for b in self.inner.iter_mut() {
             *b = *b & (2.pow(self.ncols()) - 1);
         }
     }
 
     pub fn extend_right<I: Iterator<Variant>>(&mut self, variants: I) {
         let k = variants.len();
-        for b in inner.iter_mut() {
+        for b in self.inner.iter_mut() {
             *b = *b << k;
         }
         for (read, b) in self.reads.iter().zip(self.inner.iter_mut()) {
@@ -105,6 +108,7 @@ impl ObservationMatrix {
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer
     ) -> Result<(), Box<Error>> {
+        let variants = self.variants.iter().collect_vec();
         // count haplotypes
         let mut haplotypes = VecMap::new();
         for b in self.inner {
@@ -134,14 +138,14 @@ impl ObservationMatrix {
                         break;
                     }
                 }
-                seq.push(refseq[i]);
+                seq.push(refseq[i - gene.start()]);
                 i += 1
             }
             // restrict to window len (it could be that we insert too much above)
             seq = seq[..window_len];
 
             fasta_writer.write(
-                format!("{}:offset={},af={:.2}", gene.name, offset, freq),
+                format!("{}:offset={},af={:.2}", gene.id, offset, freq),
                 None,
                 &seq
             )?;
@@ -151,44 +155,95 @@ impl ObservationMatrix {
 }
 
 
-pub fn microphasing(
+pub fn phase_gene(
     gene: &Gene,
-    refseq: &[u8],
+    fasta_reader: &mut fasta::IndexedReader,
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::RecordBuffer,
     fasta_writer: &mut fasta::Writer,
     window_len: u32
-) {
-    let observations = ObservationMatrix::new();
+) -> Result<(), Box<Error>> {
+    let refseq = fasta_reader.read(&gene.chrom, gene.start(), gene.end());
+    for transcript in gene.transcripts {
+        let observations = ObservationMatrix::new();
 
-    let mut offset = gene.start();
+        for exon in transcript.exons {
+            let mut offset = exon.start;
 
-    while offset + window_len < gene.end() {
-        // advance window to next position
-        let (added_vars, deleted_vars) = variant_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
-        let (added_reads, deleted_reads) = read_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
+            while offset + window_len < exon.end {
+                // advance window to next position
+                let (added_vars, deleted_vars) = variant_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
+                let (added_reads, deleted_reads) = read_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
 
-        // delete rows
-        observations.cleanup_reads(offset + window_len);
+                // delete rows
+                observations.cleanup_reads(offset + window_len);
 
-        // delete columns
-        observations.shrink_left(deleted_vars);
+                // delete columns
+                observations.shrink_left(deleted_vars);
 
-        // add new reads
-        for read in read_buffer.iter() {
-            observations.push_read(read, offset + window_len);
+                // add new reads
+                for read in read_buffer.iter() {
+                    observations.push_read(read, offset + window_len);
+                }
+
+                // collect variants
+                let variants = variant_buffer.iter().skip(
+                    variant_buffer.len() - added_vars
+                ).map(|rec| Variant::new(rec)).flatten();
+                // add columns
+                observations.extend_right(variants);
+
+                // print haplotypes
+                observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer)?;
+
+                offset += 3;
+            }
         }
+    }
+    Ok(())
+}
 
-        // collect variants
-        let variants = variant_buffer.iter().skip(
-            variant_buffer.len() - added_vars
-        ).map(|rec| Variant::new(rec));
-        // add columns
-        observations.extend_right(variants);
 
-        // print haplotypes
-        observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer);
+pub fn phase(
+    fasta_reader: &mut fasta::IndexedReader,
+    gtf_reader: &mut gff::Reader,
+    bcf_reader: &mut bcf::Reader,
+    bam_reader: &mut bam::IndexedReader,
+    fasta_writer: &mut fasta::Writer,
+    window_len: u32
+) -> Result<(), Box<Error>> {
+    let mut read_buffer = bam::RecordBuffer::new(bam_reader);
+    let mut variant_buffer = bcf::RecordBuffer::new(bcf_reader);
 
-        offset += 3;
+    let mut gene = None;
+    for record in gtf_reader.records() {
+        let record = record?;
+        match record.feature_type() {
+            "gene" => {
+                if let Some(gene) = gene {
+                    phase_gene(
+                        gene, fasta_reader, read_buffer, variant_buffer, fasta_writer, window_len
+                    )?;
+                }
+                if record.attributes().get("gene_biotype") == "protein_coding" {
+                    gene = Some(Gene::new(
+                        record.attributes().get("gene_id"),
+                        record.seqname(),
+                        Interval::new(record.start(), record.end())
+                    ));
+                } else {
+                    gene = None
+                }
+            },
+            "transcript" if gene.is_some() => {
+                gene.unwrap().transcripts.push(
+                    Transcript::new(record.attributes().get("transcript_id"))
+                );
+            },
+            "exon" if gene.is_some() => {
+                gene.transcripts.last().exons.push(Interval::new(record.start(), record.end()));
+            },
+            _ => continue
+        }
     }
 }
