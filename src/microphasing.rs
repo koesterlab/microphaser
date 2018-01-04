@@ -1,5 +1,7 @@
 use std::error::Error;
 use std::collections::{VecDeque, BTreeMap};
+use std::io;
+use std::str;
 
 use itertools::Itertools;
 
@@ -64,7 +66,7 @@ impl<'a> ObservationMatrix<'a> {
         }
     }
 
-    pub fn extend_right<I: Iterator<Variant>>(&mut self, variants: I) {
+    pub fn extend_right<I: Iterator<Item=Variant>>(&mut self, variants: I) {
         let k = variants.len();
         for b in self.inner.iter_mut() {
             *b = *b << k;
@@ -100,13 +102,13 @@ impl<'a> ObservationMatrix<'a> {
         self.variants.len() as u32
     }
 
-    pub fn print_haplotypes(
+    pub fn print_haplotypes<O: io::Write>(
         &self,
         gene: &Gene,
         offset: u32,
         window_len: u32,
         refseq: &[u8],
-        fasta_writer: &mut fasta::Writer
+        fasta_writer: &mut fasta::Writer<O>
     ) -> Result<(), Box<Error>> {
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
@@ -155,12 +157,12 @@ impl<'a> ObservationMatrix<'a> {
 }
 
 
-pub fn phase_gene(
+pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     gene: &Gene,
-    fasta_reader: &mut fasta::IndexedReader,
+    fasta_reader: &mut fasta::IndexedReader<F>,
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::RecordBuffer,
-    fasta_writer: &mut fasta::Writer,
+    fasta_writer: &mut fasta::Writer<O>,
     window_len: u32
 ) -> Result<(), Box<Error>> {
     let refseq = fasta_reader.read(&gene.chrom, gene.start(), gene.end());
@@ -189,7 +191,7 @@ pub fn phase_gene(
                 // collect variants
                 let variants = variant_buffer.iter().skip(
                     variant_buffer.len() - added_vars
-                ).map(|rec| Variant::new(rec)).flatten();
+                ).map(|rec| Variant::new(rec).unwrap()).flatten();
                 // add columns
                 observations.extend_right(variants);
 
@@ -204,46 +206,63 @@ pub fn phase_gene(
 }
 
 
-pub fn phase(
-    fasta_reader: &mut fasta::IndexedReader,
-    gtf_reader: &mut gff::Reader,
+pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
+    fasta_reader: &mut fasta::IndexedReader<F>,
+    gtf_reader: &mut gff::Reader<G>,
     bcf_reader: &mut bcf::Reader,
     bam_reader: &mut bam::IndexedReader,
-    fasta_writer: &mut fasta::Writer,
+    fasta_writer: &mut fasta::Writer<O>,
     window_len: u32
 ) -> Result<(), Box<Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader);
     let mut variant_buffer = bcf::RecordBuffer::new(bcf_reader);
 
     let mut gene = None;
+    let phase_last_gene = || {
+        if let Some(gene) = gene {
+            phase_gene(
+                gene, fasta_reader, read_buffer, variant_buffer, fasta_writer, window_len
+            )?;
+        }
+    };
+
     for record in gtf_reader.records() {
         let record = record?;
         match record.feature_type() {
             "gene" => {
-                if let Some(gene) = gene {
-                    phase_gene(
-                        gene, fasta_reader, read_buffer, variant_buffer, fasta_writer, window_len
-                    )?;
-                }
+                // first, phase the last gene
+                phase_last_gene();
+
                 if record.attributes().get("gene_biotype") == "protein_coding" {
+                    // if protein coding, start new gene
                     gene = Some(Gene::new(
                         record.attributes().get("gene_id"),
                         record.seqname(),
                         Interval::new(record.start(), record.end())
                     ));
                 } else {
+                    // ignore until protein coding gene occurs
                     gene = None
                 }
             },
             "transcript" if gene.is_some() => {
+                // register new transcript
                 gene.unwrap().transcripts.push(
-                    Transcript::new(record.attributes().get("transcript_id"))
+                    Transcript::new(record.attributes().get("transcript_id").expect(
+                        "missing transcript_id attribute in GTF"
+                    ))
                 );
             },
             "exon" if gene.is_some() => {
-                gene.transcripts.last().exons.push(Interval::new(record.start(), record.end()));
+                // register exon
+                gene.unwrap().transcripts.last().exons.push(Interval::new(
+                    *record.start() as u32,
+                    *record.end() as u32
+                ));
             },
             _ => continue
         }
     }
+    phase_last_gene();
+    Ok(())
 }

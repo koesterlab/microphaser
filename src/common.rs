@@ -1,4 +1,9 @@
+use std::str;
+use std::error::Error;
+
+use itertools::any;
 use rust_htslib::bcf;
+
 
 
 pub enum Variant {
@@ -9,13 +14,14 @@ pub enum Variant {
 
 
 impl Variant {
-    pub fn new(rec: &bcf::Record) -> Vec<Self> {
+    pub fn new(rec: &bcf::Record) -> Result<Vec<Self>, Box<Error>> {
         let pos = rec.pos();
         let alleles = rec.alleles();
         let refallele = alleles[0];
-        let is_germline = any(rec.genotypes().get(1).map(|gt_allele| {
+        let is_germline = any(rec.genotypes()?.get(1).iter().map(|gt_allele| {
             match gt_allele {
-                (GenotypeAllele::Unphased(i) | GenotypeAllele::Phased(i)) if i > 0 => true,
+                GenotypeAllele::Unphased(i) if i > 0 => true,
+                GenotypeAllele::Phased(i) if i > 0 => true,
                 _ => false
             }
         }), |is_germline| is_germline);
@@ -31,18 +37,26 @@ impl Variant {
                     }
                 );
             } else if a.len() > 1 && refallele.len() == 1 {
-                _alleles.push(Variant::Insertion { pos: pos, seq: a, is_germline: is_germline });
+                _alleles.push(Variant::Insertion {
+                    pos: pos,
+                    seq: (*a).to_owned(),
+                    is_germline: is_germline
+                });
             } else if a.len() == 1 && refallele.len() == 1 {
-                _alleles.push(Variant::SNV { pos: pos, alt: a[0], is_germline: is_germline });
+                _alleles.push(Variant::SNV {
+                    pos: pos,
+                    alt: a[0],
+                    is_germline: is_germline
+                });
             } else {
                 warn!(
                     "Unsupported variant {} -> {}",
-                    try!(str::from_utf8(refallele)), try!(str::from_utf8(a))
+                    str::from_utf8(refallele).unwrap(), str::from_utf8(a).unwrap()
                 );
             }
         }
 
-        _alleles
+        Ok(_alleles)
     }
 }
 
@@ -94,4 +108,14 @@ impl Transcript {
 pub struct Interval {
     pub start: u32,
     pub end: u32
+}
+
+
+impl Interval {
+    pub fn new(start: u32, end: u32) -> Self {
+        Interval {
+            start: start,
+            end: end
+        }
+    }
 }
