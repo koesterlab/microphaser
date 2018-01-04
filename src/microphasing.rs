@@ -119,7 +119,7 @@ impl<'a> ObservationMatrix<'a> {
         for (haplotype, count) in haplotypes.iter() {
             // build haplotype sequence
             let mut seq = Vec::with_capacity(window_len);
-            let freq = count as f64 / self.inner.len();
+            let freq = *count as f64 / self.inner.len();
             let mut i = offset;
             let mut j = 0;
             while i < offset + window_len {
@@ -163,9 +163,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::RecordBuffer,
     fasta_writer: &mut fasta::Writer<O>,
-    window_len: u32
+    window_len: u32,
+    refseq: &mut Vec<u8>
 ) -> Result<(), Box<Error>> {
-    let refseq = fasta_reader.read(&gene.chrom, gene.start(), gene.end());
+    fasta_reader.read(&gene.chrom, gene.start(), gene.end(), refseq);
     for transcript in gene.transcripts {
         let observations = ObservationMatrix::new();
 
@@ -174,8 +175,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
             while offset + window_len < exon.end {
                 // advance window to next position
-                let (added_vars, deleted_vars) = variant_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
-                let (added_reads, deleted_reads) = read_buffer.fetch(&gene.interval.chrom, offset, offset + window_len);
+                let (added_vars, deleted_vars) = variant_buffer.fetch(
+                    &gene.chrom.as_bytes(), offset, offset + window_len
+                )?;
+                let (added_reads, deleted_reads) = read_buffer.fetch(
+                    &gene.chrom.as_bytes(), offset, offset + window_len
+                )?;
 
                 // delete rows
                 observations.cleanup_reads(offset + window_len);
@@ -209,21 +214,26 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     fasta_reader: &mut fasta::IndexedReader<F>,
     gtf_reader: &mut gff::Reader<G>,
-    bcf_reader: &mut bcf::Reader,
-    bam_reader: &mut bam::IndexedReader,
+    bcf_reader: bcf::Reader,
+    bam_reader: bam::IndexedReader,
     fasta_writer: &mut fasta::Writer<O>,
     window_len: u32
 ) -> Result<(), Box<Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader);
     let mut variant_buffer = bcf::RecordBuffer::new(bcf_reader);
+    let mut refseq = Vec::new(); // buffer for reference sequence
 
     let mut gene = None;
-    let phase_last_gene = || {
+    let phase_last_gene = || -> Result<(), Box<Error>> {
         if let Some(gene) = gene {
             phase_gene(
-                gene, fasta_reader, read_buffer, variant_buffer, fasta_writer, window_len
+                &gene, fasta_reader, &mut read_buffer,
+                &mut variant_buffer, fasta_writer,
+                window_len,
+                &mut refseq
             )?;
         }
+        Ok(())
     };
 
     for record in gtf_reader.records() {
@@ -231,14 +241,14 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
-                phase_last_gene();
+                phase_last_gene()?;
 
-                if record.attributes().get("gene_biotype") == "protein_coding" {
+                if record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF") == "protein_coding" {
                     // if protein coding, start new gene
                     gene = Some(Gene::new(
-                        record.attributes().get("gene_id"),
+                        record.attributes().get("gene_id").expect("missing gene_id in GTF"),
                         record.seqname(),
-                        Interval::new(record.start(), record.end())
+                        Interval::new(*record.start() as u32, *record.end() as u32)
                     ));
                 } else {
                     // ignore until protein coding gene occurs
@@ -255,7 +265,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             },
             "exon" if gene.is_some() => {
                 // register exon
-                gene.unwrap().transcripts.last().exons.push(Interval::new(
+                gene.unwrap()
+                    .transcripts.last()
+                    .expect("no transcript record before exon in GTF")
+                    .exons.push(Interval::new(
                     *record.start() as u32,
                     *record.end() as u32
                 ));
@@ -263,6 +276,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             _ => continue
         }
     }
-    phase_last_gene();
+    phase_last_gene()?;
     Ok(())
 }
