@@ -14,18 +14,18 @@ pub enum Variant {
 
 
 impl Variant {
-    pub fn new(rec: &bcf::Record) -> Result<Vec<Self>, Box<Error>> {
-        let pos = rec.pos();
-        let alleles = rec.alleles();
-        let refallele = alleles[0];
+    pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
         let is_germline = any(rec.genotypes()?.get(1).iter().map(|gt_allele| {
             match gt_allele {
-                GenotypeAllele::Unphased(i) if i > 0 => true,
-                GenotypeAllele::Phased(i) if i > 0 => true,
+                &bcf::record::GenotypeAllele::Unphased(i) if i > 0 => true,
+                &bcf::record::GenotypeAllele::Phased(i) if i > 0 => true,
                 _ => false
             }
         }), |is_germline| is_germline);
 
+        let pos = rec.pos();
+        let alleles = rec.alleles();
+        let refallele = alleles[0];
         let mut _alleles = Vec::with_capacity(alleles.len() - 1);
         for a in &alleles[1..] {
             if a.len() == 1 && refallele.len() > 1 {
@@ -57,6 +57,14 @@ impl Variant {
         }
 
         Ok(_alleles)
+    }
+
+    pub fn pos(&self) -> u32 {
+        match self {
+            &Variant::SNV { pos, .. } => pos,
+            &Variant::Deletion { pos, .. } => pos,
+            &Variant::Insertion { pos, .. } => pos
+        }
     }
 }
 

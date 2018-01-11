@@ -9,6 +9,7 @@ extern crate rust_htslib;
 
 use std::process;
 use std::error::Error;
+use std::io;
 
 use clap::App;
 
@@ -25,15 +26,18 @@ pub fn run() -> Result<(), Box<Error>> {
                       .version(env!("CARGO_PKG_VERSION"))
                       .get_matches();
 
-    let mut bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample"))?;
-    let mut bcf_reader = bcf::Reader::from_stdin();
-    let mut fasta_reader = fasta::IndexedReader::from_path(matches.value_of("ref"))?;
-    let mut gtf_reader = gff::Reader::from_path(matches.value_of("annotation"))?;
-    let mut fasta_writer = fasta::Writer::from_stdout();
+    let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
+    let bcf_reader = bcf::Reader::from_stdin()?;
+    let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
+    let mut gtf_reader = gff::Reader::from_file(
+        matches.value_of("annotation").unwrap(), gff::GffType::GTF2
+    )?;
+    let mut fasta_writer = fasta::Writer::new(io::stdout());
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
-        fasta_reader, gtf_reader, bcf_reader, bam_reader, fasta_writer, window_len
-    )?
+        &mut fasta_reader, &mut gtf_reader, bcf_reader,
+        bam_reader, &mut fasta_writer, window_len
+    )
 }
 
 

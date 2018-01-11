@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::collections::{VecDeque, BTreeMap};
 use std::io;
-use std::str;
 
 use itertools::Itertools;
 
@@ -11,37 +10,36 @@ use bio::io::fasta;
 use bio::io::gff;
 use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
-use rust_htslib::prelude::*;
 
 use common::{Gene, Variant, Interval, Transcript};
 
 
-pub fn bitvector_is_set(b: u64, k: u32) -> bool {
+pub fn bitvector_is_set(b: u64, k: usize) -> bool {
     (b & (1 << k)) != 0
 }
 
 
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
-        Variant::SNV { pos: pos, alt: alt } => {
-            let b = read.seq()[read.cigar().read_pos(pos)?.unwrap()];
+        &Variant::SNV { pos, alt, .. } => {
+            let b = read.seq()[read.cigar().read_pos(pos, false, false)?.unwrap() as usize];
             Ok(b == alt)
         },
-        Variant::Insertion { pos: pos, seq: seq } => {
+        &Variant::Insertion {..} => {
             // TODO compare the two using a pair HMM or use cigar string
-            for c in read.cigar() {
+            for c in read.cigar().iter() {
                 match c {
-                    Cigar::Ins(_) => return Ok(true),
+                    &Cigar::Ins(_) => return Ok(true),
                     _ => ()
                 }
             }
             Ok(false)
         },
-        Variant::Deletion { pos: pos, len: varlen } => {
+        &Variant::Deletion {..} => {
             // TODO compare the two using a pair HMM or use cigar string
-            for c in read.cigar() {
+            for c in read.cigar().iter() {
                 match c {
-                    Cigar::Del(_) => return Ok(true),
+                    &Cigar::Del(_) => return Ok(true),
                     _ => ()
                 }
             }
@@ -51,55 +49,77 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 }
 
 
-pub struct ObservationMatrix<'a> {
-    inner: VecDeque<u64>,
-    reads: BTreeMap<u32, Vec<&'a bam::Record>>,
+pub struct Observation{
+    read: bam::Record,
+    haplotype: u64
+}
+
+
+pub struct ObservationMatrix {
+    observations: BTreeMap<u32, Vec<Observation>>,
     variants: VecDeque<Variant>
 }
 
 
-impl<'a> ObservationMatrix<'a> {
-    pub fn shrink_left(&mut self, k: u32) {
-        self.variants.drain(..k);
-        for b in self.inner.iter_mut() {
-            *b = *b & (2.pow(self.ncols()) - 1);
+impl ObservationMatrix {
+    pub fn new() -> Self {
+        ObservationMatrix {
+            observations: BTreeMap::new(),
+            variants: VecDeque::new()
         }
     }
 
-    pub fn extend_right<I: Iterator<Item=Variant>>(&mut self, variants: I) {
-        let k = variants.len();
-        for b in self.inner.iter_mut() {
-            *b = *b << k;
+    pub fn shrink_left(&mut self, k: usize) {
+        self.variants.drain(..k);
+        let mask = 2u64.pow(self.ncols()) - 1;
+        for obs in self.observations.values_mut().flatten() {
+            obs.haplotype = obs.haplotype & mask;
         }
-        for (read, b) in self.reads.iter().zip(self.inner.iter_mut()) {
+    }
+
+    pub fn extend_right(
+        &mut self, variants: Vec<Variant>
+    ) -> Result<(), Box<Error>> {
+        let k = variants.len();
+        for obs in self.observations.values_mut().flatten() {
+            obs.haplotype <<= k;
+        }
+        for obs in self.observations.values_mut().flatten() {
             for (i, variant) in variants.iter().rev().enumerate() {
-                if supports_variant(read, variant) {
-                    b |= 1 << i;
+                if supports_variant(&obs.read, &variant)? {
+                    obs.haplotype |= 1 << i;
                 }
             }
         }
-        self.variants.extend(variants);
+        self.variants.extend(variants.into_iter());
+
+        Ok(())
     }
 
     /// Remove all reads that do not enclose interval end.
     pub fn cleanup_reads(&mut self, interval_end: u32) {
-        let reads = self.reads.split_off(interval_end);
-        self.inner.drain(..self.reads.len());
-        self.reads = reads;
+        let observations = self.observations.split_off(&interval_end);
+        self.observations = observations;
     }
 
     /// Add read, while considering given interval end.
-    pub fn push_read(&mut self, read: &bam::Record, interval_end:u32) {
-        let end_pos = read.cigar().end_pos();
+    pub fn push_read(&mut self, read: bam::Record, interval_end:u32) -> Result<(), Box<Error>> {
+        let end_pos = read.cigar().end_pos()? as u32;
         if end_pos >= interval_end {
             // only insert if end_pos is larger than the interval end
-            self.reads.entry(end_pos).or_insert_with(|| Vec::new()).push(read);
-            self.inner.push(0);
+            self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(
+                Observation { read: read, haplotype: 0 }
+            );
         }
+        Ok(())
     }
 
     pub fn ncols(&self) -> u32 {
         self.variants.len() as u32
+    }
+
+    pub fn nrows(&self) -> usize {
+        self.observations.values().map(|o| o.len()).sum()
     }
 
     pub fn print_haplotypes<O: io::Write>(
@@ -112,44 +132,48 @@ impl<'a> ObservationMatrix<'a> {
     ) -> Result<(), Box<Error>> {
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
-        let mut haplotypes = VecMap::new();
-        for b in self.inner {
-            haplotypes.entry(b).or_insert(0) += 1;
+        let mut haplotypes: VecMap<usize> = VecMap::new();
+        for obs in self.observations.values().flatten() {
+            *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
+        let mut seq = Vec::with_capacity(window_len as usize);
         for (haplotype, count) in haplotypes.iter() {
+            // VecMap forces usize as type for keys, but our haplotypes as u64
+            let haplotype = haplotype as u64;
             // build haplotype sequence
-            let mut seq = Vec::with_capacity(window_len);
-            let freq = *count as f64 / self.inner.len();
+            seq.clear();
+            let freq = *count as f64 / self.nrows() as f64;
             let mut i = offset;
             let mut j = 0;
             while i < offset + window_len {
                 // TODO what happens if an insertion starts upstream of window and overlaps it
-                while i == variants[j].pos {
+                while i == variants[j].pos() {
                     if bitvector_is_set(haplotype, j) {
                         match variants[j] {
-                            Variant::SNV { alt: a } => {
-                                seq.push(a);
+                            &Variant::SNV { alt, .. } => {
+                                seq.push(alt);
                                 i += 1;
                             },
-                            Variant::Insertion { seq: s } => {
-                                seq.extend(s);
+                            &Variant::Insertion { seq: ref s, .. } => {
+                                seq.extend(s.iter().cloned());
                                 i += 1;
                             },
-                            Variant::Deletion { len: l } => i += l
+                            &Variant::Deletion { len, .. } => i += len
                         }
                         break;
+                    } else {
+                        j += 1;
                     }
                 }
-                seq.push(refseq[i - gene.start()]);
+                seq.push(refseq[(i - gene.start()) as usize]);
                 i += 1
             }
-            // restrict to window len (it could be that we insert too much above)
-            seq = seq[..window_len];
 
             fasta_writer.write(
-                format!("{}:offset={},af={:.2}", gene.id, offset, freq),
+                &format!("{}:offset={},af={:.2}", gene.id, offset, freq),
                 None,
-                &seq
+                // restrict to window len (it could be that we insert too much above)
+                &seq[..window_len as usize]
             )?;
         }
         Ok(())
@@ -166,11 +190,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     window_len: u32,
     refseq: &mut Vec<u8>
 ) -> Result<(), Box<Error>> {
-    fasta_reader.read(&gene.chrom, gene.start(), gene.end(), refseq);
-    for transcript in gene.transcripts {
-        let observations = ObservationMatrix::new();
+    fasta_reader.read(&gene.chrom, gene.start() as u64, gene.end() as u64, refseq)?;
+    for transcript in &gene.transcripts {
+        let mut observations = ObservationMatrix::new();
 
-        for exon in transcript.exons {
+        for exon in &transcript.exons {
             let mut offset = exon.start;
 
             while offset + window_len < exon.end {
@@ -178,32 +202,35 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 let (added_vars, deleted_vars) = variant_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?;
-                let (added_reads, deleted_reads) = read_buffer.fetch(
+                read_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?;
 
-                // delete rows
-                observations.cleanup_reads(offset + window_len);
+                {
+                    // delete rows
+                    observations.cleanup_reads(offset + window_len);
 
-                // delete columns
-                observations.shrink_left(deleted_vars);
+                    // delete columns
+                    observations.shrink_left(deleted_vars);
 
-                // add new reads
-                for read in read_buffer.iter() {
-                    observations.push_read(read, offset + window_len);
+                    // add new reads
+                    for read in read_buffer.iter() {
+                        observations.push_read(read.clone(), offset + window_len)?;
+                    }
+
+                    // collect variants
+                    let nvars = variant_buffer.len();
+                    let variants = variant_buffer.iter_mut().skip(
+                        nvars - added_vars
+                    ).map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
+                    // add columns
+                    observations.extend_right(variants)?;
+
+                    // print haplotypes
+                    observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer)?;
+
+                    offset += 3;
                 }
-
-                // collect variants
-                let variants = variant_buffer.iter().skip(
-                    variant_buffer.len() - added_vars
-                ).map(|rec| Variant::new(rec).unwrap()).flatten();
-                // add columns
-                observations.extend_right(variants);
-
-                // print haplotypes
-                observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer)?;
-
-                offset += 3;
             }
         }
     }
@@ -224,8 +251,8 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     let mut refseq = Vec::new(); // buffer for reference sequence
 
     let mut gene = None;
-    let phase_last_gene = || -> Result<(), Box<Error>> {
-        if let Some(gene) = gene {
+    let mut phase_last_gene = |gene| -> Result<(), Box<Error>> {
+        if let Some(ref gene) = gene {
             phase_gene(
                 &gene, fasta_reader, &mut read_buffer,
                 &mut variant_buffer, fasta_writer,
@@ -241,7 +268,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
-                phase_last_gene()?;
+                phase_last_gene(gene)?;
 
                 if record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF") == "protein_coding" {
                     // if protein coding, start new gene
@@ -257,7 +284,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             },
             "transcript" if gene.is_some() => {
                 // register new transcript
-                gene.unwrap().transcripts.push(
+                gene.as_mut().unwrap().transcripts.push(
                     Transcript::new(record.attributes().get("transcript_id").expect(
                         "missing transcript_id attribute in GTF"
                     ))
@@ -265,8 +292,8 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             },
             "exon" if gene.is_some() => {
                 // register exon
-                gene.unwrap()
-                    .transcripts.last()
+                gene.as_mut().unwrap()
+                    .transcripts.last_mut()
                     .expect("no transcript record before exon in GTF")
                     .exons.push(Interval::new(
                     *record.start() as u32,
@@ -276,6 +303,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             _ => continue
         }
     }
-    phase_last_gene()?;
+    phase_last_gene(gene)?;
     Ok(())
 }
