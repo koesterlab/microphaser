@@ -26,5 +26,5 @@ args:
   - window-len:
       long: window-len
       short: w
-      default: 27
+      default_value: "27"
       help: Length of generated haplotypes.
