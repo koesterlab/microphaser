@@ -1,0 +1,30 @@
+name: Rust-Bio-Tools
+authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
+about: Tumor microphasing for neoantigen prediction.
+
+global_settings:
+  - ColoredHelp
+
+args:
+  - verbose:
+      long: verbose
+      short: v
+      help: Verbose output.
+  - tumor-sample:
+      required: true
+      help: The tumor BAM file.
+  - ref:
+      long: ref
+      short: r
+      required: true
+      help: The reference genome.
+  - annotation:
+      long: track
+      short: t
+      required: true
+      help: A GTF annotation track.
+  - window-len:
+      long: window-len
+      short: w
+      default: 27
+      help: Length of generated haplotypes.
