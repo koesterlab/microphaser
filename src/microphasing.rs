@@ -282,17 +282,18 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     gene = None
                 }
             },
-            "transcript" if gene.is_some() => {
+            "transcript" => {
                 // register new transcript
-                gene.as_mut().unwrap().transcripts.push(
+                gene.as_mut()
+                    .expect("no gene record before transcript in GTF").transcripts.push(
                     Transcript::new(record.attributes().get("transcript_id").expect(
                         "missing transcript_id attribute in GTF"
                     ))
                 );
             },
-            "exon" if gene.is_some() => {
+            "exon" => {
                 // register exon
-                gene.as_mut().unwrap()
+                gene.as_mut().expect("no gene record before exon in GTF")
                     .transcripts.last_mut()
                     .expect("no transcript record before exon in GTF")
                     .exons.push(Interval::new(
@@ -300,6 +301,22 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     *record.end() as u32
                 ));
             },
+            "start_codon" => {
+                gene.as_mut().expect("no gene record before start_codon in GTF")
+                    .transcripts.last_mut()
+                    .expect("no transcript record before start codon in GTF")
+                    .exons.last_mut()
+                    .expect("no exon record before start codon in GTF")
+                    .start = *record.start() as u32;
+            },
+            "stop_codon" => {
+                gene.as_mut().expect("no gene record before stop_codon in GTF")
+                    .transcripts.last_mut()
+                    .expect("no transcript record before stop codon in GTF")
+                    .exons.last_mut()
+                    .expect("no exon record before stop codon in GTF")
+                    .end = *record.end() as u32;
+            }
             _ => continue
         }
     }
