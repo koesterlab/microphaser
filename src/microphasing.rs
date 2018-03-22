@@ -180,8 +180,8 @@ impl ObservationMatrix {
             let haplotype = haplotype as u64;
             // build haplotype sequence
             seq.clear();
-            let mut is_germline = true;
-            let mut is_variant = false;
+            let mut n_somatic = 0;
+            let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
             let mut i = offset;
             let mut j = 0;
@@ -208,8 +208,10 @@ impl ObservationMatrix {
                                     window_end += len;
                                 }
                             }
-                            is_germline = variants[j].is_germline();
-                            is_variant = true;
+                            if !variants[j].is_germline() {
+                                n_somatic += 1;
+                            }
+                            n_variants += 1;
                             break;
                         } else {
                             j += 1;
@@ -222,8 +224,8 @@ impl ObservationMatrix {
 
             fasta_writer.write(
                 &format!(
-                    "{}:{{\"offset\":{},\"af\":{:.2},\"variant\":{},\"somatic\":{}}}",
-                    transcript.id, offset, freq, is_variant, !is_germline
+                    "{}:{{\"offset\":{},\"af\":{:.2},\"variants\":{},\"somatic\":{}}}",
+                    transcript.id, offset, freq, n_variants, n_somatic
                 ),
                 None,
                 // restrict to window len (it could be that we insert too much above)

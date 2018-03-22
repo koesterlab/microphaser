@@ -1,6 +1,6 @@
-name: Rust-Bio-Tools
+name: microphaser
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
-about: Tumor microphasing for neoantigen prediction.
+about: Tumor/Normal microphasing for neoantigen prediction.
 
 global_settings:
   - ColoredHelp
@@ -12,7 +12,7 @@ args:
       help: Verbose output.
   - tumor-sample:
       required: true
-      help: The tumor BAM file.
+      help: The tumor or normal BAM file.
   - ref:
       long: ref
       short: r
