@@ -1,5 +1,6 @@
 ##fileformat=VCFv4.1
 ##reference=microphaser/test/ensembl_test.fa
+##contig=<ID=ENSG00000004776|ENST00000004982,length=180>
 ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
 ##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
 ##INFO=<ID=VMX,Number=1,Type=String,Description="SNP is Missense in these Read Frames">

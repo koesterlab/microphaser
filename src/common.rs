@@ -15,7 +15,7 @@ pub enum Variant {
 
 impl Variant {
     pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
-        let is_germline = !rec.info(b"SOMATIC").flag()?;
+        let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
 
         let pos = rec.pos();
         let alleles = rec.alleles();
@@ -58,6 +58,14 @@ impl Variant {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, .. } => pos,
             &Variant::Insertion { pos, .. } => pos
+        }
+    }
+
+    pub fn is_germline(&self) -> bool {
+        match self {
+            &Variant::SNV { is_germline, .. } => is_germline,
+            &Variant::Deletion { is_germline, .. } => is_germline,
+            &Variant::Insertion { is_germline, .. } => is_germline
         }
     }
 }

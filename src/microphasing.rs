@@ -22,12 +22,10 @@ pub fn bitvector_is_set(b: u64, k: usize) -> bool {
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
-            //println!("{}", read.seq().len());
-            //println!("{}", read.seq());
-            println!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
-            println!("Read start: {}", read.pos());
-            println!("Variant Pos: {}", variant.pos());
-            let b = read.seq()[read.cigar().read_pos(pos, false, false)?.unwrap() as usize];
+            info!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
+            info!("Read start: {}", read.pos());
+            info!("Variant Pos: {}", variant.pos());
+            let b = read.seq()[read.cigar().read_pos(pos, false, false)?.expect("bug: read does not enclose variant") as usize];
             Ok(b == alt)
         },
         &Variant::Insertion {..} => {
@@ -98,13 +96,13 @@ impl ObservationMatrix {
                 continue
                 }
                 if supports_variant(&obs.read, &variant)? {
-                    println!("Read {} supports the variant at {}", String::from_utf8_lossy(obs.read.qname()), variant.pos());
+                    info!("Read {} supports the variant at {}", String::from_utf8_lossy(obs.read.qname()), variant.pos());
                     obs.haplotype |= 1 << i;
-                    println!("Haplotype {}", obs.haplotype);
+                    info!("Haplotype {}", obs.haplotype);
                 }
             }
         }
-        let new_variants = variants.split_off(old_variant_count); 
+        let new_variants = variants.split_off(old_variant_count);
         self.variants.extend(new_variants.into_iter());
 
         Ok(())
@@ -134,11 +132,11 @@ impl ObservationMatrix {
     pub fn push_read(&mut self, read: bam::Record, interval_end:u32, interval_start:u32) -> Result<(), Box<Error>> {
         let end_pos = read.cigar().end_pos()? as u32;
         let start_pos = read.pos() as u32;
-        println!("{}", String::from_utf8_lossy(read.qname()));
-        println!("{}", read.pos());
-        println!("{}", interval_start);
+        info!("{}", String::from_utf8_lossy(read.qname()));
+        info!("{}", read.pos());
+        info!("{}", interval_start);
         if end_pos >= interval_end && start_pos <= interval_start {
-            println!("Read pushed!");
+            info!("Read pushed!");
             // only insert if end_pos is larger than the interval end
             self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(
                 Observation { read: read, haplotype: 0 }
@@ -158,6 +156,7 @@ impl ObservationMatrix {
     pub fn print_haplotypes<O: io::Write>(
         &self,
         gene: &Gene,
+        transcript: &Transcript,
         offset: u32,
         window_len: u32,
         refseq: &[u8],
@@ -170,46 +169,50 @@ impl ObservationMatrix {
 //            if obs.read.pos() as u32 > variants[0].pos() {
 //                continue
 //            }
-            println!("obs.read start {}", obs.read.pos());
-            println!("obs.haplotype {}", obs.haplotype);
+            info!("obs.read start {}", obs.read.pos());
+            info!("obs.haplotype {}", obs.haplotype);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
         let mut seq = Vec::with_capacity(window_len as usize);
         for (haplotype, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
             let haplotype = haplotype as u64;
-            println!("haplotype before printing {}", haplotype);
+            info!("haplotype before printing {}", haplotype);
             // build haplotype sequence
             seq.clear();
+            let mut is_germline = true;
+            let mut is_variant = false;
             let freq = *count as f64 / self.nrows() as f64;
             let mut i = offset;
             let mut j = 0;
-            println!("Variants: {}", variants.len());
+            info!("Variants: {}", variants.len());
             if variants.is_empty() {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
                 while i < offset + window_len {
-                    println!("Run variable i: {}", i);
-                    println!("Variant run var j: {}", j);
+                    info!("Run variable i: {}", i);
+                    info!("Variant run var j: {}", j);
                     // TODO what happens if an insertion starts upstream of window and overlaps it
-                    while i == variants[j].pos() {
-                        println!("Check {}", (haplotype & (1 << j))); 
+                    while j < variants.len() && i == variants[j].pos() {
+                        info!("Check {}", (haplotype & (1 << j)));
                         if bitvector_is_set(haplotype, j) {
-                            println!("Matching variant before printing");
+                            info!("Matching variant before printing");
                             match variants[j] {
                                 &Variant::SNV { alt, .. } => {
-                                    seq.push(alt);
+                                    seq.push(alt.to_ascii_lowercase());
                                     i += 1;
                                 },
                                 &Variant::Insertion { seq: ref s, .. } => {
-                                    seq.extend(s.iter().cloned());
+                                    seq.extend(s.to_ascii_lowercase().into_iter());
                                     i += 1;
                                 },
                                 &Variant::Deletion { len, .. } => i += len
                             }
+                            is_germline = variants[j].is_germline();
+                            is_variant = true;
                             break;
                         } else {
-                            println!("j++");
+                            info!("j++");
                             j += 1;
                         }
                     }
@@ -219,7 +222,10 @@ impl ObservationMatrix {
             }
 
             fasta_writer.write(
-                &format!("{}:offset={},af={:.2}", gene.id, offset, freq),
+                &format!(
+                    "{}:{{\"offset\":{},\"af\":{:.2},\"variant\":{},\"somatic\":{}}}",
+                    transcript.id, offset, freq, is_variant, !is_germline
+                ),
                 None,
                 // restrict to window len (it could be that we insert too much above)
                 &seq[..window_len as usize]
@@ -245,9 +251,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
         for exon in &transcript.exons {
             let mut offset = exon.start;
-            //println!("{}", exon.end);
+            //info!("{}", exon.end);
             while offset + window_len < exon.end {
-                //println!("{}", &gene.chrom);
+                //info!("{}", &gene.chrom);
                 // advance window to next position
                 let (added_vars, deleted_vars) = variant_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
@@ -255,6 +261,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 read_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?;
+                info!("window: {}-{}", offset, offset + window_len);
 
                 {
                     // delete rows
@@ -269,23 +276,28 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             observations.push_read(read.clone(), offset + window_len, offset)?;
                         }
                     }
+                    // TODO do not re-annotate old observations
+                    // 1. annotate new observations with old variants
+                    // 2. annotate all observations with new variants
 
                     // collect variants
                     let nvars = variant_buffer.len();
-                    println!("Variants in buffer {}", nvars);
+                    info!("Variants in buffer {}", nvars);
                     let variants = variant_buffer.iter_mut()//.skip(
                         //nvars - added_vars
                     .map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
-                    //println!("{}", variants.len());
+                    //info!("{}", variants.len());
                     // add columns
                     observations.extend_right(variants, added_vars, nvars - added_vars)?;
 
                     // print haplotypes
-                    observations.print_haplotypes(gene, offset, window_len, refseq, fasta_writer)?;
+                    observations.print_haplotypes(
+                        gene, transcript, offset, window_len, refseq, fasta_writer
+                    )?;
 
                     offset += 3;
                 }
-                //println!("{}", offset);
+                //info!("{}", offset);
             }
         }
     }
@@ -307,9 +319,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     let mut gene = None;
     let mut phase_last_gene = |gene| -> Result<(), Box<Error>> {
-        println!("phasing?");
         if let Some(ref gene) = gene {
-            println!("phasing!");
             phase_gene(
                 &gene, fasta_reader, &mut read_buffer,
                 &mut variant_buffer, fasta_writer,
@@ -322,15 +332,12 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     for record in gtf_reader.records() {
         let record = record?;
-        println!("New Record");
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
-                println!("a gene");
                 phase_last_gene(gene)?;
                 if record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF") == "protein_coding" {
                     // if protein coding, start new gene
-                    println!("we have some gene!");
                     gene = Some(Gene::new(
                         record.attributes().get("gene_id").expect("missing gene_id in GTF"),
                         record.seqname(),

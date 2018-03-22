@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate fern;
 #[macro_use]
 extern crate clap;
 extern crate vec_map;
@@ -26,11 +27,26 @@ pub fn run() -> Result<(), Box<Error>> {
                       .version(env!("CARGO_PKG_VERSION"))
                       .get_matches();
 
+    fern::Dispatch::new()
+                   .format(|out, message, _| out.finish(format_args!("{}", message)))
+                   .level(
+                       if matches.is_present("verbose") {
+                           log::LevelFilter::Debug
+                       } else {
+                           log::LevelFilter::Info
+                       }
+                   )
+                   .chain(std::io::stderr())
+                   .apply().unwrap();
+
+
     let mut gtf_reader = gff::Reader::from_file(
         matches.value_of("annotation").unwrap(), gff::GffType::GTF2
     )?;
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
+
     let bcf_reader = bcf::Reader::from_stdin()?;
+
     let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let window_len = value_t!(matches, "window-len", u32)?;

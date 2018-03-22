@@ -8,5 +8,6 @@ bio = "0.16"
 rust-htslib = { git = "https://github.com/rust-bio/rust-htslib.git", branch = "master" }
 clap = { version = "2.27", features = ["yaml", "color", "suggestions"]}
 itertools = "0.6"
-log = "0.3"
+log = "0.4"
 vec_map = "0.8"
+fern = "0.5"
