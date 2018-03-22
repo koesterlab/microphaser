@@ -4,7 +4,7 @@ use std::error::Error;
 use rust_htslib::bcf;
 
 
-
+#[derive(Debug)]
 pub enum Variant {
     SNV { pos: u32, alt: u8, is_germline: bool },
     Insertion { pos: u32, seq: Vec<u8>, is_germline: bool },
@@ -32,7 +32,7 @@ impl Variant {
             } else if a.len() > 1 && refallele.len() == 1 {
                 _alleles.push(Variant::Insertion {
                     pos: pos,
-                    seq: (*a).to_owned(),
+                    seq: a[1..].to_owned(),
                     is_germline: is_germline
                 });
             } else if a.len() == 1 && refallele.len() == 1 {
@@ -67,9 +67,18 @@ impl Variant {
             &Variant::Insertion { is_germline, .. } => is_germline
         }
     }
+
+    pub fn frameshift(&self) -> u32 {
+        match self {
+            &Variant::SNV { .. } => 0,
+            &Variant::Deletion { len, .. } => len % 3,
+            &Variant::Insertion { ref seq, .. } => seq.len() as u32 % 3
+        }
+    }
 }
 
 
+#[derive(Debug)]
 pub struct Gene {
     pub id: String,
     pub transcripts: Vec<Transcript>,
@@ -98,6 +107,7 @@ impl Gene {
 }
 
 
+#[derive(Debug)]
 pub struct Transcript {
     pub id: String,
     pub exons: Vec<Interval>
@@ -114,6 +124,7 @@ impl Transcript {
 }
 
 
+#[derive(Debug)]
 pub struct Interval {
     pub start: u32,
     pub end: u32

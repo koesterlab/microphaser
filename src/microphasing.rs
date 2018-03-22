@@ -49,6 +49,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 }
 
 
+#[derive(Debug)]
 pub struct Observation{
     read: bam::Record,
     haplotype: u64
@@ -200,11 +201,11 @@ impl ObservationMatrix {
                                 &Variant::Insertion { seq: ref s, .. } => {
                                     seq.extend(s.to_ascii_lowercase().into_iter());
                                     i += 1;
-                                    window_end -= s.len() as u32 - 1;
+                                    window_end -= s.len() as u32;
                                 },
                                 &Variant::Deletion { len, .. } => {
                                     i += len;
-                                    window_end += len - 1;
+                                    window_end += len;
                                 }
                             }
                             is_germline = variants[j].is_germline();
@@ -246,7 +247,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_reader.read(&gene.chrom, gene.start() as u64, gene.end() as u64, refseq)?;
     for transcript in &gene.transcripts {
         let mut observations = ObservationMatrix::new();
-        let mut frameshifts = vec![0];
+        let mut frameshifts = BTreeMap::new();
+        frameshifts.insert(0, 0);
 
         for exon in &transcript.exons {
             let mut offset = exon.start;
@@ -279,15 +281,30 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         nvars - added_vars
                     ).map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
 
+                    // determine frameshifts
+                    for variant in &variants {
+                        let s = variant.frameshift();
+                        if s > 0 {
+                            let s_ = frameshifts.values().map(|prev| prev + s).collect_vec();
+                            for s in s_ {
+                                frameshifts.insert(variant.pos(), s);
+                            }
+                        }
+                    }
+
                     // add columns
                     observations.extend_right(variants)?;
 
-                    // print haplotypes
-                    observations.print_haplotypes(
-                        gene, transcript, offset, window_len, refseq, fasta_writer
-                    )?;
+                    for (_, &frameshift) in frameshifts.range(..offset) {
+                        if offset % 3 == frameshift {
+                            // print haplotypes
+                            observations.print_haplotypes(
+                                gene, transcript, offset, window_len, refseq, fasta_writer
+                            )?;
+                        }
+                    }
 
-                    offset += 3;
+                    offset += 1;
                 }
             }
         }
@@ -354,7 +371,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     .transcripts.last_mut()
                     .expect("no transcript record before exon in GTF")
                     .exons.push(Interval::new(
-                    *record.start() as u32,
+                    *record.start() as u32 - 1,
                     *record.end() as u32
                 ));
             },
@@ -364,7 +381,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     .expect("no transcript record before start codon in GTF")
                     .exons.last_mut()
                     .expect("no exon record before start codon in GTF")
-                    .start = *record.start() as u32;
+                    .start = *record.start() as u32 - 1;
             },
             "stop_codon" => {
                 gene.as_mut().expect("no gene record before stop_codon in GTF")
