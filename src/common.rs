@@ -1,7 +1,6 @@
 use std::str;
 use std::error::Error;
 
-use itertools::any;
 use rust_htslib::bcf;
 
 

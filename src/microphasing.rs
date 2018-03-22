@@ -22,9 +22,6 @@ pub fn bitvector_is_set(b: u64, k: usize) -> bool {
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
-            info!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
-            info!("Read start: {}", read.pos());
-            info!("Variant Pos: {}", variant.pos());
             let b = read.seq()[read.cigar().read_pos(pos, false, false)?.expect("bug: read does not enclose variant") as usize];
             Ok(b == alt)
         },
@@ -96,9 +93,9 @@ impl ObservationMatrix {
                 continue
                 }
                 if supports_variant(&obs.read, &variant)? {
-                    info!("Read {} supports the variant at {}", String::from_utf8_lossy(obs.read.qname()), variant.pos());
+                    debug!("Read {} supports the variant at {}", String::from_utf8_lossy(obs.read.qname()), variant.pos());
                     obs.haplotype |= 1 << i;
-                    info!("Haplotype {}", obs.haplotype);
+                    debug!("Haplotype {}", obs.haplotype);
                 }
             }
         }
@@ -132,11 +129,7 @@ impl ObservationMatrix {
     pub fn push_read(&mut self, read: bam::Record, interval_end:u32, interval_start:u32) -> Result<(), Box<Error>> {
         let end_pos = read.cigar().end_pos()? as u32;
         let start_pos = read.pos() as u32;
-        info!("{}", String::from_utf8_lossy(read.qname()));
-        info!("{}", read.pos());
-        info!("{}", interval_start);
         if end_pos >= interval_end && start_pos <= interval_start {
-            info!("Read pushed!");
             // only insert if end_pos is larger than the interval end
             self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(
                 Observation { read: read, haplotype: 0 }
@@ -166,18 +159,12 @@ impl ObservationMatrix {
         // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
         for obs in self.observations.values().flatten() {
-//            if obs.read.pos() as u32 > variants[0].pos() {
-//                continue
-//            }
-            info!("obs.read start {}", obs.read.pos());
-            info!("obs.haplotype {}", obs.haplotype);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
         let mut seq = Vec::with_capacity(window_len as usize);
         for (haplotype, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
             let haplotype = haplotype as u64;
-            info!("haplotype before printing {}", haplotype);
             // build haplotype sequence
             seq.clear();
             let mut is_germline = true;
@@ -185,18 +172,13 @@ impl ObservationMatrix {
             let freq = *count as f64 / self.nrows() as f64;
             let mut i = offset;
             let mut j = 0;
-            info!("Variants: {}", variants.len());
             if variants.is_empty() {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
                 while i < offset + window_len {
-                    info!("Run variable i: {}", i);
-                    info!("Variant run var j: {}", j);
                     // TODO what happens if an insertion starts upstream of window and overlaps it
                     while j < variants.len() && i == variants[j].pos() {
-                        info!("Check {}", (haplotype & (1 << j)));
                         if bitvector_is_set(haplotype, j) {
-                            info!("Matching variant before printing");
                             match variants[j] {
                                 &Variant::SNV { alt, .. } => {
                                     seq.push(alt.to_ascii_lowercase());
@@ -212,7 +194,6 @@ impl ObservationMatrix {
                             is_variant = true;
                             break;
                         } else {
-                            info!("j++");
                             j += 1;
                         }
                     }
@@ -251,9 +232,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
         for exon in &transcript.exons {
             let mut offset = exon.start;
-            //info!("{}", exon.end);
             while offset + window_len < exon.end {
-                //info!("{}", &gene.chrom);
                 // advance window to next position
                 let (added_vars, deleted_vars) = variant_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
@@ -261,7 +240,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 read_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?;
-                info!("window: {}-{}", offset, offset + window_len);
 
                 {
                     // delete rows
@@ -282,11 +260,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // collect variants
                     let nvars = variant_buffer.len();
-                    info!("Variants in buffer {}", nvars);
                     let variants = variant_buffer.iter_mut()//.skip(
                         //nvars - added_vars
                     .map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
-                    //info!("{}", variants.len());
+
                     // add columns
                     observations.extend_right(variants, added_vars, nvars - added_vars)?;
 
@@ -297,7 +274,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     offset += 3;
                 }
-                //info!("{}", offset);
             }
         }
     }
