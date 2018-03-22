@@ -15,13 +15,7 @@ pub enum Variant {
 
 impl Variant {
     pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
-        let is_germline = any(rec.genotypes()?.get(0).iter().map(|gt_allele| { //changed 1 to 0 (index)
-            match gt_allele {
-                &bcf::record::GenotypeAllele::Unphased(i) if i > 0 => true,
-                &bcf::record::GenotypeAllele::Phased(i) if i > 0 => true,
-                _ => false
-            }
-        }), |is_germline| is_germline);
+        let is_germline = !rec.info(b"SOMATIC").flag()?;
 
         let pos = rec.pos();
         let alleles = rec.alleles();

@@ -247,18 +247,14 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             let mut offset = exon.start;
             //println!("{}", exon.end);
             while offset + window_len < exon.end {
-                println!("Interval: {}-{}", offset, offset + window_len);
                 //println!("{}", &gene.chrom);
                 // advance window to next position
                 let (added_vars, deleted_vars) = variant_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?; // -1 because gtf is 1-based, bcf is 0-based
-                println!("New Variants added: {}", added_vars);
-                println!("Variants deleted: {}", deleted_vars);
                 read_buffer.fetch(
                     &gene.chrom.as_bytes(), offset, offset + window_len
                 )?;
-                println!("Reads in Readbuffer {}", read_buffer.len());
 
                 {
                     // delete rows
@@ -323,14 +319,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
         }
         Ok(())
     };
-    
-    println!("Hey1");
-//    //gene = None;
-//    for record in gtf_reader.records() {
-//        let record = record?;
-//        let ft = record.feature_type();
-//        println!("{}", ft);
-//    }
 
     for record in gtf_reader.records() {
         let record = record?;
@@ -353,19 +341,18 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     gene = None
                 }
             },
-            "transcript" if gene.is_some() => {
+            "transcript" => {
                 // register new transcript
-                println!("we have some transcript!");
-                gene.as_mut().unwrap().transcripts.push(
+                gene.as_mut()
+                    .expect("no gene record before transcript in GTF").transcripts.push(
                     Transcript::new(record.attributes().get("transcript_id").expect(
                         "missing transcript_id attribute in GTF"
                     ))
                 );
             },
-            "exon" if gene.is_some() => {
+            "exon" => {
                 // register exon
-                println!("we have some exon!");
-                gene.as_mut().unwrap()
+                gene.as_mut().expect("no gene record before exon in GTF")
                     .transcripts.last_mut()
                     .expect("no transcript record before exon in GTF")
                     .exons.push(Interval::new(
@@ -373,10 +360,25 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     *record.end() as u32
                 ));
             },
+            "start_codon" => {
+                gene.as_mut().expect("no gene record before start_codon in GTF")
+                    .transcripts.last_mut()
+                    .expect("no transcript record before start codon in GTF")
+                    .exons.last_mut()
+                    .expect("no exon record before start codon in GTF")
+                    .start = *record.start() as u32;
+            },
+            "stop_codon" => {
+                gene.as_mut().expect("no gene record before stop_codon in GTF")
+                    .transcripts.last_mut()
+                    .expect("no transcript record before stop codon in GTF")
+                    .exons.last_mut()
+                    .expect("no exon record before stop codon in GTF")
+                    .end = *record.end() as u32;
+            }
             _ => continue
         }
     }
-    println!("hey2");
     phase_last_gene(gene)?;
 
     Ok(())
