@@ -55,6 +55,25 @@ pub struct Observation{
 }
 
 
+impl Observation {
+    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<Error>> {
+        if (self.read.pos() as u32) > variant.pos() {
+            panic!("bug: read starts right of variant");
+        }
+        if supports_variant(&self.read, &variant)? {
+            debug!(
+                "Read {} supports the variant at {}",
+                String::from_utf8_lossy(self.read.qname()), variant.pos()
+            );
+            self.haplotype |= 1 << i;
+            debug!("Haplotype {}", self.haplotype);
+        }
+
+        Ok(())
+    }
+}
+
+
 pub struct ObservationMatrix {
     observations: BTreeMap<u32, Vec<Observation>>,
     variants: VecDeque<Variant>
@@ -78,28 +97,19 @@ impl ObservationMatrix {
     }
 
     pub fn extend_right(
-        &mut self, mut variants: Vec<Variant>,
-        new_variant_count:usize, old_variant_count:usize
+        &mut self, new_variants: Vec<Variant>
     ) -> Result<(), Box<Error>> {
-        let k = new_variant_count;
+        let k = new_variants.len();
         if k > 0 {
             for obs in self.observations.values_mut().flatten() {
                 obs.haplotype <<= k;
             }
         }
         for obs in self.observations.values_mut().flatten() {
-            for (i, variant) in variants.iter().rev().enumerate() {
-                if (obs.read.pos() as u32) > variant.pos() {
-                continue
-                }
-                if supports_variant(&obs.read, &variant)? {
-                    debug!("Read {} supports the variant at {}", String::from_utf8_lossy(obs.read.qname()), variant.pos());
-                    obs.haplotype |= 1 << i;
-                    debug!("Haplotype {}", obs.haplotype);
-                }
+            for (i, variant) in new_variants.iter().rev().enumerate() {
+                obs.update_haplotype(i, variant)?;
             }
         }
-        let new_variants = variants.split_off(old_variant_count);
         self.variants.extend(new_variants.into_iter());
 
         Ok(())
@@ -111,7 +121,7 @@ impl ObservationMatrix {
         self.observations = observations;
     }
 
-    pub fn already_in(&mut self, read: bam::Record) -> Result<bool, Box<Error>> {
+    pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<Error>> {
         let end_pos = read.cigar().end_pos()? as u32;
         let qname = read.qname();
         if self.observations.contains_key(&end_pos) {
@@ -131,9 +141,11 @@ impl ObservationMatrix {
         let start_pos = read.pos() as u32;
         if end_pos >= interval_end && start_pos <= interval_start {
             // only insert if end_pos is larger than the interval end
-            self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(
-                Observation { read: read, haplotype: 0 }
-            );
+            let mut obs = Observation { read: read, haplotype: 0 };
+            for (i, variant) in self.variants.iter().enumerate() {
+                obs.update_haplotype(i, variant)?;
+            }
+            self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(obs);
         }
         Ok(())
     }
@@ -234,6 +246,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_reader.read(&gene.chrom, gene.start() as u64, gene.end() as u64, refseq)?;
     for transcript in &gene.transcripts {
         let mut observations = ObservationMatrix::new();
+        let mut frameshifts = vec![0];
 
         for exon in &transcript.exons {
             let mut offset = exon.start;
@@ -255,22 +268,19 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // add new reads
                     for read in read_buffer.iter() {
-                        if observations.already_in(read.clone())? == false {
+                        if !observations.contains(read)? {
                             observations.push_read(read.clone(), offset + window_len, offset)?;
                         }
                     }
-                    // TODO do not re-annotate old observations
-                    // 1. annotate new observations with old variants
-                    // 2. annotate all observations with new variants
 
                     // collect variants
                     let nvars = variant_buffer.len();
-                    let variants = variant_buffer.iter_mut()//.skip(
-                        //nvars - added_vars
-                    .map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
+                    let variants = variant_buffer.iter_mut().skip(
+                        nvars - added_vars
+                    ).map(|rec| Variant::new(rec).unwrap()).flatten().collect_vec();
 
                     // add columns
-                    observations.extend_right(variants, added_vars, nvars - added_vars)?;
+                    observations.extend_right(variants)?;
 
                     // print haplotypes
                     observations.print_haplotypes(
