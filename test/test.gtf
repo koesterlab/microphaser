@@ -1,0 +1,3 @@
+ENSG00000004776|ENST00000004982	.	gene	1	180	.	+	.	gene_id "001"; transcript_id "001.1"; gene_biotype "protein_coding";
+ENSG00000004776|ENST00000004982	.	transcript	1	180	.	+	.	gene_id "001"; transcript_id "001.1"; gene_biotype "protein_coding";
+ENSG00000004776|ENST00000004982	.	exon	1	180	.	+	.	gene_id "001"; transcript_id "001.1"; gene_biotype "protein_coding";

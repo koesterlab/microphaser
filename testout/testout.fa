@@ -1,0 +1,236 @@
+Hey1
+New Record
+a gene
+phasing?
+we have some gene!
+New Record
+we have some transcript!
+New Record
+we have some exon!
+New Record
+a gene
+phasing?
+phasing!
+Interval: 1-28
+New Variants added: 1
+Variants deleted: 0
+Reads in Readbuffer 11
+vcf_test-ENSG00000004776|ENST00000004982-13
+2
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-105
+3
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-29
+4
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-99
+9
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-35
+11
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-95
+13
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-217
+14
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-61
+16
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-41
+17
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-17
+20
+1
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-129
+26
+1
+Read pushed!
+Variants in buffer 1
+Read to check support: vcf_test-ENSG00000004776|ENST00000004982-13
+Read start: 2
+Variant Pos: 11
+Read vcf_test-ENSG00000004776|ENST00000004982-13 supports the variant at 11
+Haplotype 1
+Read to check support: vcf_test-ENSG00000004776|ENST00000004982-105
+Read start: 3
+Variant Pos: 11
+Read vcf_test-ENSG00000004776|ENST00000004982-105 supports the variant at 11
+Haplotype 1
+Read to check support: vcf_test-ENSG00000004776|ENST00000004982-29
+Read start: 4
+Variant Pos: 11
+Read vcf_test-ENSG00000004776|ENST00000004982-29 supports the variant at 11
+Haplotype 1
+Read to check support: vcf_test-ENSG00000004776|ENST00000004982-99
+Read start: 9
+Variant Pos: 11
+Read vcf_test-ENSG00000004776|ENST00000004982-99 supports the variant at 11
+Haplotype 1
+Read to check support: vcf_test-ENSG00000004776|ENST00000004982-35
+Read start: 11
+Variant Pos: 11
+Read vcf_test-ENSG00000004776|ENST00000004982-35 supports the variant at 11
+Haplotype 1
+obs.read start 2
+obs.haplotype 1
+obs.read start 3
+obs.haplotype 1
+obs.read start 4
+obs.haplotype 1
+obs.read start 9
+obs.haplotype 1
+obs.read start 11
+obs.haplotype 1
+haplotype before printing 1
+Variants: 1
+Run variable i: 1
+Variant run var j: 0
+Run variable i: 2
+Variant run var j: 0
+Run variable i: 3
+Variant run var j: 0
+Run variable i: 4
+Variant run var j: 0
+Run variable i: 5
+Variant run var j: 0
+Run variable i: 6
+Variant run var j: 0
+Run variable i: 7
+Variant run var j: 0
+Run variable i: 8
+Variant run var j: 0
+Run variable i: 9
+Variant run var j: 0
+Run variable i: 10
+Variant run var j: 0
+Run variable i: 11
+Variant run var j: 0
+Check 1
+Matching variant before printing
+Run variable i: 13
+Variant run var j: 0
+Run variable i: 14
+Variant run var j: 0
+Run variable i: 15
+Variant run var j: 0
+Run variable i: 16
+Variant run var j: 0
+Run variable i: 17
+Variant run var j: 0
+Run variable i: 18
+Variant run var j: 0
+Run variable i: 19
+Variant run var j: 0
+Run variable i: 20
+Variant run var j: 0
+Run variable i: 21
+Variant run var j: 0
+Run variable i: 22
+Variant run var j: 0
+Run variable i: 23
+Variant run var j: 0
+Run variable i: 24
+Variant run var j: 0
+Run variable i: 25
+Variant run var j: 0
+Run variable i: 26
+Variant run var j: 0
+Run variable i: 27
+Variant run var j: 0
+Interval: 4-31
+New Variants added: 0
+Variants deleted: 0
+Reads in Readbuffer 10
+vcf_test-ENSG00000004776|ENST00000004982-29
+4
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-99
+9
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-35
+11
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-95
+13
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-217
+14
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-61
+16
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-41
+17
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-17
+20
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-129
+26
+4
+Read pushed!
+vcf_test-ENSG00000004776|ENST00000004982-159
+30
+4
+Read pushed!
+Variants in buffer 1
+obs.read start 2
+obs.haplotype 1
+obs.read start 3
+obs.haplotype 1
+obs.read start 4
+obs.haplotype 1
+obs.read start 4
+obs.haplotype 0
+obs.read start 9
+obs.haplotype 1
+obs.read start 9
+obs.haplotype 0
+obs.read start 11
+obs.haplotype 1
+obs.read start 11
+obs.haplotype 0
+haplotype before printing 0
+Variants: 1
+Run variable i: 4
+Variant run var j: 0
+Run variable i: 5
+Variant run var j: 0
+Run variable i: 6
+Variant run var j: 0
+Run variable i: 7
+Variant run var j: 0
+Run variable i: 8
+Variant run var j: 0
+Run variable i: 9
+Variant run var j: 0
+Run variable i: 10
+Variant run var j: 0
+Run variable i: 11
+Variant run var j: 0
+Check 0
+j++
+>001:offset=1,af=0.45
+CTGCAACGCGTAGGAGCAGGATGGAGA

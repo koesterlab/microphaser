@@ -16,11 +16,13 @@ args:
   - ref:
       long: ref
       short: r
+      value_name: FILE
       required: true
       help: The reference genome.
   - annotation:
       long: track
       short: t
+      value_name: FILE
       required: true
       help: A GTF annotation track.
   - window-len:

@@ -1,0 +1,17 @@
+##fileformat=VCFv4.1
+##reference=microphaser/test/ensembl_test.fa
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=VMX,Number=1,Type=String,Description="SNP is Missense in these Read Frames">
+##INFO=<ID=VNX,Number=1,Type=String,Description="SNP is Nonsense in these Read Frames">
+##INFO=<ID=VFX,Number=1,Type=String,Description="Indel Causes Frameshift">
+##INFO=<ID=WP,Number=A,Type=Integer,Description="NEAT-GenReads ploidy indicator">
+##ALT=<ID=DEL,Description="Deletion">
+##ALT=<ID=DUP,Description="Duplication">
+##ALT=<ID=INS,Description="Insertion of novel sequence">
+##ALT=<ID=INV,Description="Inversion">
+##ALT=<ID=CNV,Description="Copy number variable region">
+##ALT=<ID=TRANS,Description="Translocation">
+##ALT=<ID=INV-TRANS,Description="Inverted translocation">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+ENSG00000004776|ENST00000004982	12	.	G	T	.	PASS	WP=1/1
