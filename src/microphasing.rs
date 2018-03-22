@@ -172,10 +172,11 @@ impl ObservationMatrix {
             let freq = *count as f64 / self.nrows() as f64;
             let mut i = offset;
             let mut j = 0;
+            let mut window_end = offset + window_len;
             if variants.is_empty() {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
-                while i < offset + window_len {
+                while i < window_end {
                     // TODO what happens if an insertion starts upstream of window and overlaps it
                     while j < variants.len() && i == variants[j].pos() {
                         if bitvector_is_set(haplotype, j) {
@@ -187,8 +188,12 @@ impl ObservationMatrix {
                                 &Variant::Insertion { seq: ref s, .. } => {
                                     seq.extend(s.to_ascii_lowercase().into_iter());
                                     i += 1;
+                                    window_end -= s.len() as u32 - 1;
                                 },
-                                &Variant::Deletion { len, .. } => i += len
+                                &Variant::Deletion { len, .. } => {
+                                    i += len;
+                                    window_end += len - 1;
+                                }
                             }
                             is_germline = variants[j].is_germline();
                             is_variant = true;
