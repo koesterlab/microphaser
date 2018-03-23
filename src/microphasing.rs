@@ -190,7 +190,7 @@ impl ObservationMatrix {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
                 while i < window_end {
-                    // TODO what happens if an insertion starts upstream of window and overlaps it
+                    // TODO what happens if a deletion starts upstream of window and overlaps it
                     while j < variants.len() && i == variants[j].pos() {
                         if bitvector_is_set(haplotype, j) {
                             match variants[j] {
@@ -287,9 +287,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     for variant in &variants {
                         let s = variant.frameshift();
                         if s > 0 {
-                            let s_ = frameshifts.values().map(|prev| prev + s).collect_vec();
-                            for s in s_ {
-                                frameshifts.insert(variant.pos(), s);
+                            let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
+                            for s_ in previous {
+                                frameshifts.insert(variant.end_pos(), s + s_);
                             }
                         }
                     }

@@ -60,6 +60,14 @@ impl Variant {
         }
     }
 
+    pub fn end_pos(&self) -> u32 {
+        match self {
+            &Variant::SNV { pos, .. } => pos,
+            &Variant::Deletion { pos, len, .. } => pos + len - 1,
+            &Variant::Insertion { pos, ref seq, .. } => pos
+        }
+    }
+
     pub fn is_germline(&self) -> bool {
         match self {
             &Variant::SNV { is_germline, .. } => is_germline,
