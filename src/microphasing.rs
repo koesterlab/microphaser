@@ -328,14 +328,16 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     let mut refseq = Vec::new(); // buffer for reference sequence
 
     let mut gene = None;
-    let mut phase_last_gene = |gene| -> Result<(), Box<Error>> {
+    let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<Error>> {
         if let Some(ref gene) = gene {
-            phase_gene(
-                &gene, fasta_reader, &mut read_buffer,
-                &mut variant_buffer, fasta_writer,
-                window_len,
-                &mut refseq
-            )?;
+            if gene.biotype == "protein_coding" {
+                phase_gene(
+                    &gene, fasta_reader, &mut read_buffer,
+                    &mut variant_buffer, fasta_writer,
+                    window_len,
+                    &mut refseq
+                )?;
+            }
         }
         Ok(())
     };
@@ -346,17 +348,12 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             "gene" => {
                 // first, phase the last gene
                 phase_last_gene(gene)?;
-                if record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF") == "protein_coding" {
-                    // if protein coding, start new gene
-                    gene = Some(Gene::new(
-                        record.attributes().get("gene_id").expect("missing gene_id in GTF"),
-                        record.seqname(),
-                        Interval::new(*record.start() as u32, *record.end() as u32)
-                    ));
-                } else {
-                    // ignore until protein coding gene occurs
-                    gene = None
-                }
+                gene = Some(Gene::new(
+                    record.attributes().get("gene_id").expect("missing gene_id in GTF"),
+                    record.seqname(),
+                    Interval::new(*record.start() as u32, *record.end() as u32),
+                    record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF")
+                ));
             },
             "transcript" => {
                 // register new transcript

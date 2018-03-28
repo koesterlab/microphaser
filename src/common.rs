@@ -64,7 +64,7 @@ impl Variant {
         match self {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, len, .. } => pos + len - 1,
-            &Variant::Insertion { pos, ref seq, .. } => pos
+            &Variant::Insertion { pos, .. } => pos
         }
     }
 
@@ -91,17 +91,19 @@ pub struct Gene {
     pub id: String,
     pub transcripts: Vec<Transcript>,
     pub interval: Interval,
-    pub chrom: String
+    pub chrom: String,
+    pub biotype: String
 }
 
 
 impl Gene {
-    pub fn new(id: &str, chrom: &str, interval: Interval) -> Self {
+    pub fn new(id: &str, chrom: &str, interval: Interval, biotype: &str) -> Self {
         Gene {
             id: id.to_owned(),
             transcripts: Vec::new(),
             chrom: chrom.to_owned(),
-            interval: interval
+            interval: interval,
+            biotype: biotype.to_owned()
         }
     }
 
