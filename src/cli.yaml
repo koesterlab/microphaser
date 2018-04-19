@@ -19,12 +19,12 @@ args:
       value_name: FILE
       required: true
       help: The reference genome.
-  - annotation:
-      long: track
-      short: t
+  - variants:
+      long: variants
+      short: b
       value_name: FILE
       required: true
-      help: A GTF annotation track.
+      help: A bcf/vcf file containing variants.
   - window-len:
       long: window-len
       short: w
