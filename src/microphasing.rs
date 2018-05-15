@@ -205,7 +205,7 @@ impl ObservationMatrix {
         fasta_writer: &mut fasta::Writer<O>
     ) -> Result<(), Box<Error>> {
         let variants = self.variants.iter().collect_vec();
-        /// count haplotypes
+        // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
         for obs in self.observations.values().flatten() {
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
@@ -215,7 +215,7 @@ impl ObservationMatrix {
         eprintln!("Printing at offset: {}",offset);
         eprintln!("refseq length {}", refseq.len());
 
-        /// Strand orientation
+        // Strand orientation
         let strand = match transcript.strand {
             Strand::Reverse => "Reverse",
             _ => "Forward"
@@ -252,8 +252,9 @@ impl ObservationMatrix {
                                     window_end -= (s.len() as u32) -1;
                                 },
                                 &Variant::Deletion { len, .. } => {
-                                    i += len;
-                                    window_end += len;
+                                    seq.push(refseq[(i - gene.start()) as usize]);
+                                    i += len + 1;
+                                    window_end += len + 1;
                                 }
                             }
                             if !variants[j].is_germline() {
@@ -294,7 +295,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     window_len: u32,
     refseq: &mut Vec<u8>
 ) -> Result<(), Box<Error>> {
-    fasta_reader.read(&gene.chrom, gene.start() as u64, gene.end() as u64, refseq)?;
+    // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
+    let end_overflow = 100;
+    fasta_reader.read(&gene.chrom, gene.start() as u64, (gene.end() + end_overflow) as u64, refseq)?;
     let mut variant_tree = BTreeMap::new();
     let mut read_tree = BTreeMap::new();
     eprintln!("Start Phasing");
