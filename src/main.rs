@@ -7,10 +7,15 @@ extern crate vec_map;
 extern crate bio;
 extern crate itertools;
 extern crate rust_htslib;
+extern crate csv;
+#[macro_use]
+extern crate serde_derive;
 
 use std::process;
 use std::error::Error;
 use std::io;
+
+
 
 use clap::App;
 
@@ -49,15 +54,21 @@ pub fn run() -> Result<(), Box<Error>> {
 
     let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
+
+    let only_relevant = matches.is_present("relevant");
+
+    let mut csv_writer = csv::Writer::from_path(matches.value_of("csv").unwrap())?;
+
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
         &mut fasta_reader, &mut gtf_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, window_len
+        bam_reader, &mut fasta_writer, &mut csv_writer, window_len, only_relevant
     )
 }
 
 
 pub fn main() {
+
     if let Err(e) = run() {
         error!("{}", e);
         process::exit(1);

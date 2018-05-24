@@ -1,3 +1,6 @@
+extern crate hyper;
+extern crate flate2;
+
 use std::process::Command;
 use std::fs;
 
@@ -18,6 +21,28 @@ fn microphaser(cmd: &str) {
             .spawn().unwrap().wait().unwrap().success());
 }
 
+
+fn download_reference(chrom: &str) -> String {
+    let reference = format!("tests/resources/{}.fa", chrom);
+    if !Path::new(&reference).exists() {
+        let client = hyper::Client::new();
+        let res = client.get(
+            &format!("http://hgdownload.cse.ucsc.edu/goldenpath/hg38/chromosomes/{}.fa.gz", chrom)
+        ).send().unwrap();
+        let mut reference_stream = flate2::read::GzDecoder::new(res).unwrap();
+        let mut reference_file = fs::File::create(&reference).unwrap();
+
+        io::copy(&mut reference_stream, &mut reference_file).unwrap();
+    }
+    assert!(Path::new(&reference).exists());
+    if !Path::new(&(reference.clone() + ".fai")).exists() {
+        Command::new("samtools").args(&["faidx", &reference])
+                                .status()
+                                .expect("failed to create fasta index");
+    }
+
+    reference
+}
 
 #[test]
 fn test_empty() {

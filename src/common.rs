@@ -125,7 +125,7 @@ impl Gene {
 pub struct Transcript {
     pub id: String,
     pub strand: Strand,
-    pub exons: Vec<Interval>
+    pub exons: Vec<Interval>,
 }
 
 
@@ -134,8 +134,11 @@ impl Transcript {
         Transcript {
             id: id.to_owned(),
             strand: strand,
-            exons: Vec::new()
+            exons: Vec::new(),
         }
+    }
+    pub fn is_coding(&self) -> bool{
+        return !(self.exons.is_empty());
     }
 }
 
