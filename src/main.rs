@@ -10,6 +10,7 @@ extern crate rust_htslib;
 extern crate csv;
 #[macro_use]
 extern crate serde_derive;
+extern crate sha1;
 
 use std::process;
 use std::error::Error;
@@ -52,17 +53,20 @@ pub fn run() -> Result<(), Box<Error>> {
 
     let bcf_reader = bcf::Reader::from_path(matches.value_of("variants").unwrap())?;
 
+    println!("Open fasta");
     let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
-
+    println!("fasta open");
     let only_relevant = matches.is_present("relevant");
+
+    let mut prot_writer = fasta::Writer::to_file(matches.value_of("proteome").unwrap())?;
 
     let mut csv_writer = csv::Writer::from_path(matches.value_of("csv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
         &mut fasta_reader, &mut gtf_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, &mut csv_writer, window_len, only_relevant
+        bam_reader, &mut fasta_writer, &mut csv_writer, &mut prot_writer, window_len, only_relevant
     )
 }
 

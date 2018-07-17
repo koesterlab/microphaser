@@ -93,6 +93,7 @@ impl Variant {
 #[derive(Debug)]
 pub struct Gene {
     pub id: String,
+    pub name: String,
     pub transcripts: Vec<Transcript>,
     pub interval: Interval,
     pub chrom: String,
@@ -101,9 +102,10 @@ pub struct Gene {
 
 
 impl Gene {
-    pub fn new(id: &str, chrom: &str, interval: Interval, biotype: &str) -> Self {
+    pub fn new(id: &str, name: &str, chrom: &str, interval: Interval, biotype: &str) -> Self {
         Gene {
             id: id.to_owned(),
+            name: name.to_owned(),
             transcripts: Vec::new(),
             chrom: chrom.to_owned(),
             interval: interval,

@@ -39,3 +39,9 @@ args:
       long: only-relevant
       short: or
       help: Output only relevant haplotypes (spanning over variant positions)
+  - proteome:
+      long: proteome
+      short: p
+      value_name: FILE
+      default_value: "proteome.fasta"
+      help: Output wildtype haplotypes to proteome file

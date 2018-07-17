@@ -4,6 +4,7 @@ use std::io;
 use std::fs;
 
 use csv;
+use sha1;
 
 use itertools::Itertools;
 
@@ -23,6 +24,20 @@ pub fn bitvector_is_set(b: u64, k: usize) -> bool {
     (b & (1 << k)) != 0
 }
 
+pub fn switch_ascii_case(c: u8) -> u8 {
+    if c.is_ascii_uppercase() {
+        c.to_ascii_lowercase()}
+    else {
+        c.to_ascii_uppercase()}
+}
+
+pub fn switch_ascii_case_vec(v: &Vec<u8>) -> Vec<u8> {
+    let c = v[0];
+    if c.is_ascii_uppercase() {
+        v.to_ascii_lowercase()}
+    else {
+        v.to_ascii_uppercase()}
+}
 
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
@@ -72,6 +87,8 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 pub struct IDRecord{
     id: String,
     transcript: String,
+    gene_id: String,
+    gene_name: String,
     offset: u32,
     freq: f64,
     nvar: u32,
@@ -233,6 +250,7 @@ impl ObservationMatrix {
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
         csv_writer: &mut csv::Writer<fs::File>,
+        prot_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
     ) -> Result<(), Box<Error>> {
         let variants = self.variants.iter().collect_vec();
@@ -283,11 +301,11 @@ impl ObservationMatrix {
                             }
                             match variants[j] {
                                 &Variant::SNV { alt, .. } => {
-                                    seq.push(alt.to_ascii_lowercase());
+                                    seq.push(switch_ascii_case(alt));//alt.to_ascii_lowercase());
                                     i += 1;
                                 },
                                 &Variant::Insertion { seq: ref s, .. } => {
-                                    seq.extend(s.to_ascii_lowercase().into_iter());
+                                    seq.extend(switch_ascii_case_vec(s).into_iter());//s.to_ascii_lowercase().into_iter());
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
@@ -311,11 +329,17 @@ impl ObservationMatrix {
                 }
             }
 
-            let fasta_id = format!("{}_{:.3}_{}", offset, freq, strand.chars().next().unwrap());
-            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, strand: strand.to_string()};
+            let mut shaid = sha1::Sha1::new();
+            let mut id = format!("{:?}{}{}", &seq, transcript.id, offset);
+            shaid.update(id.as_bytes());
+            let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
+            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, strand: strand.to_string()};
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
-            if !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0 {
+            if !(only_relevant) && record.nvar == 0 && record.freq == 1.00 {
+                prot_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
+                }
+            if record.freq < 1.00 || record.nvar > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 csv_writer.serialize(record)?;
             }
@@ -349,6 +373,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     variant_buffer: &mut bcf::RecordBuffer,
     fasta_writer: &mut fasta::Writer<O>,
     csv_writer: &mut csv::Writer<fs::File>,
+    prot_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     refseq: &mut Vec<u8>,
     only_relevant: bool
@@ -560,7 +585,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             // print haplotypes
                             debug!("Should print haplotypes");
                             observations.print_haplotypes(
-                                gene, transcript, offset, window_len, refseq, fasta_writer, csv_writer, only_relevant
+                                gene, transcript, offset, window_len, refseq, fasta_writer, csv_writer, prot_writer, only_relevant
                             )?;
                             exon_rest = match transcript.strand {
                                 Strand::Forward => exon.end - (offset + window_len),
@@ -597,6 +622,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     bam_reader: bam::IndexedReader,
     fasta_writer: &mut fasta::Writer<O>,
     csv_writer: &mut csv::Writer<fs::File>,
+    prot_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     only_relevant: bool
 ) -> Result<(), Box<Error>> {
@@ -618,7 +644,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 //                variant_buffer.buffer.iter().map(|rec| btree.insert(rec.pos(), rec));
                 phase_gene(
                     &gene, fasta_reader, &mut read_buffer,
-                    &mut variant_buffer, fasta_writer, csv_writer,
+                    &mut variant_buffer, fasta_writer, csv_writer, prot_writer,
                     window_len,
                     &mut refseq,
                     only_relevant
@@ -637,6 +663,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                 phase_last_gene(gene)?;
                 gene = Some(Gene::new(
                     record.attributes().get("gene_id").expect("missing gene_id in GTF"),
+                    record.attributes().get("gene_name").expect("missing gene_name in GTF"),
                     record.seqname(),
                     Interval::new(*record.start() as u32 - 1, *record.end() as u32),
                     record.attributes().get("gene_biotype").expect("missing gene_biotype in GTF")
