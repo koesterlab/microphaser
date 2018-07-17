@@ -96,18 +96,7 @@ pub struct IDRecord{
     strand: String
 }
 
-//impl IDRecord {
-//    pub fn new(transcript: &str, offset: u32, freq: f64, nvar: u32, nsomatic: u32, strand: &str) -> Self {
-//        IDRecord {
-//            transcript: transcript.to_owned(),
-//            offset: offset,
-//            freq: freq,
-//            nvar: nvar,
-//            nsomatic: nsomatic,
-//            strand: strand.to_owned()
-//        }
-//    }
-//}
+
 
 
 #[derive(Debug)]
@@ -301,11 +290,11 @@ impl ObservationMatrix {
                             }
                             match variants[j] {
                                 &Variant::SNV { alt, .. } => {
-                                    seq.push(switch_ascii_case(alt));//alt.to_ascii_lowercase());
+                                    seq.push(switch_ascii_case(alt));
                                     i += 1;
                                 },
                                 &Variant::Insertion { seq: ref s, .. } => {
-                                    seq.extend(switch_ascii_case_vec(s).into_iter());//s.to_ascii_lowercase().into_iter());
+                                    seq.extend(switch_ascii_case_vec(s).into_iter());
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
@@ -398,15 +387,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     let (_addedvars, _deletedvars) = variant_buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
     let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
 
-//    for rec in variant_buffer.iter_mut() {
-//        variant_tree.entry(rec.pos()).or_insert(Variant::new(rec).unwrap());
-//    }
-
-//    let count_vars = |range| btree.range(range).map(|var| var.1.len()).sum();
-//    let genevars = buffer.iter().collect_vec();
-//    for v in genevars {
-//        btree.insert(v.pos(),*v);
-//    }
 
     for transcript in &gene.transcripts {
         debug!("is coding: {}", transcript.is_coding());
@@ -469,21 +449,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     variant_tree.range((offset + window_len)..(old_offset + window_len)).map(|var| var.1).flatten().count()
                 };
 
-//                let (added_vars, deleted_vars) = variant_buffer.fetch(
-//                    &gene.chrom.as_bytes(), offset , offset + window_len -1
-//                )?; // -1 because gtf is 1-based, bcf is 0-based
-
-//                if transcript.strand == Strand::Reverse {
-//                    read_buffer.fetch(
-//                        &gene.chrom.as_bytes(), offset, offset + window_len
-//                    )?;
-//                }
-//                else {
-//                    read_buffer.fetch(
-//                        &gene.chrom.as_bytes(), offset, offset + window_len
-//                    )?;
-//                }
-
 
                 debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
                 let mut reads = if transcript.strand == Strand::Reverse {
@@ -503,20 +468,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     }
                 };
 
-//                let mut reads = match transcript.strand {
-//                    Strand::Reverse => if offset == exon.end - window_len {
-//                        read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten()
-//                    }
-//                    else {
-//                        read_tree.range((offset - (max_read_len - window_len))..(offset - (max_read_len - window_len) + 1)).map(|rec| rec.1).flatten()
-//                    },
-//                    _ => if offset == exon.start {
-//                        read_tree.range((offset-(max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten()
-//                    }
-//                    else {
-//                        read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1).flatten()
-//                    }
-//                };
+
 
                 debug!("Variants added: {}", added_vars);
                 debug!("Variants deleted: {}", deleted_vars);
@@ -541,13 +493,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         else {
                             observations.push_read(read.clone(), offset + window_len, offset, false)?;
                         }
-                        //}
                     }
 
-//                    for (i, v) in variant_tree.range(offset..(offset + window_len)) {
-//                        debug!("Variant pos {}", i);
-//                        debug!("Variant: {}", v.flatten());
-//                    }
 
                     // collect variants
                     let variants = match transcript.strand {
@@ -593,13 +540,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 Strand::Unknown => exon.end - (offset + window_len)
                             };
                             debug!("Exon Rest {}", exon_rest);
-//                            if rest < 3 && rest > 0 {
-//                                next_exon_offset = 3 - rest;
-//                                //break;
-//                            }
                         }
                     }
-                    //debug!("Variants in window: {}",nvars);
                     //offset += 1;
                     old_offset = offset;
                     match transcript.strand {
@@ -637,11 +579,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     let mut phase_last_gene = | gene: Option<Gene>| -> Result<(), Box<Error>> {
         if let Some(ref gene) = gene {
             if gene.biotype == "protein_coding" {
-//                let (_addedvars, _deletedvars) = variant_buffer.buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
-//                for variant in variant_buffer.buffer.iter() {
-//                    variant_buffer.btree.entry(variant.pos()).or_insert(variant);
-//                }
-//                variant_buffer.buffer.iter().map(|rec| btree.insert(rec.pos(), rec));
                 phase_gene(
                     &gene, fasta_reader, &mut read_buffer,
                     &mut variant_buffer, fasta_writer, csv_writer, prot_writer,
@@ -670,11 +607,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                 ));
             },
             "transcript" => {
-//                if !(startcodon) {
-//                debug!("{}", "no_startcodon");
-//                gene.as_mut().expect("no gene record before exon in GTF")
-//                    .transcripts.pop();
-//                }
                 // register new transcript
                 debug!("Transcript found");
                 gene.as_mut()
@@ -739,6 +671,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
         }
     }
     phase_last_gene(gene)?;
-//    csv_writer.flush()?;
+
     Ok(())
 }
