@@ -178,9 +178,9 @@ impl ObservationMatrix {
     /// Remove all reads that do not enclose interval end.
     pub fn cleanup_reads(&mut self, interval_end: u32, reverse: bool) {
         debug!("Number of reads(before removal): {}", self.observations.len());
-        let observations = self.observations.split_off(&interval_end);
+        //let observations = self.observations.split_off(&interval_end);
         if !reverse {
-            self.observations = observations;
+            self.observations = self.observations.split_off(&interval_end);
         }
         debug!("Number of reads(after removal): {}",  self.observations.len());
     }
@@ -238,7 +238,7 @@ impl ObservationMatrix {
         window_len: u32,
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
-        csv_writer: &mut csv::Writer<fs::File>,
+        tsv_writer: &mut csv::Writer<fs::File>,
         prot_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
     ) -> Result<(), Box<Error>> {
@@ -330,7 +330,7 @@ impl ObservationMatrix {
                 }
             if record.freq < 1.00 || record.nvar > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
-                csv_writer.serialize(record)?;
+                tsv_writer.serialize(record)?;
             }
 
 //            debug!("Writing to fasta");
@@ -348,7 +348,7 @@ impl ObservationMatrix {
 //            )?;
 
 
-//            csv_writer.serialize(record)?;
+//            tsv_writer.serialize(record)?;
         }
         Ok(())
     }
@@ -361,7 +361,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::RecordBuffer,
     fasta_writer: &mut fasta::Writer<O>,
-    csv_writer: &mut csv::Writer<fs::File>,
+    tsv_writer: &mut csv::Writer<fs::File>,
     prot_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     refseq: &mut Vec<u8>,
@@ -431,20 +431,29 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                 // advance window to next position
                 let nvars = variant_tree.range(offset..(offset + window_len)).map(|var| var.1).flatten().count();
+                // store number of variants in window in case it is the last window for this exon
                 last_window_vars = nvars;
                 debug!("Variants in window: {}",nvars);
+                // first window in the exon, all variants found are newly added
                 let mut added_vars = if offset == old_offset {
                     nvars
+                // if we advance the window (forward or reverse), just the newly added variants are counted
+                // forward orientation
                 } else if offset > old_offset {
                     variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1).flatten().count()
+                // reverse orientation
                 } else {
                     variant_tree.range(offset..old_offset).map(|var| var.1).flatten().count()
                 };
 
+                // first window in the exon, no variants are deleted
                 let mut deleted_vars = if offset == old_offset {
                     0
+                // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
+                // forward orientation
                 } else if offset > old_offset {
                     variant_tree.range(old_offset..offset).map(|var| var.1).flatten().count()
+                // reverse orientation
                 } else {
                     variant_tree.range((offset + window_len)..(old_offset + window_len)).map(|var| var.1).flatten().count()
                 };
@@ -452,17 +461,21 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                 debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
                 let mut reads = if transcript.strand == Strand::Reverse {
+                    // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.end - window_len - current_exon_offset {
                         read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
                     }
+                    // while advancing the window (reverse orientation), we only add reads that end in the range between old and new window end, so we don't count any read twice 
                     else {
                         read_tree.range((offset - (max_read_len - window_len))..(offset - (max_read_len - window_len) + 1)).map(|rec| rec.1).flatten().collect_vec()
                     }
                 }
                 else {
+                    // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.start + current_exon_offset {
                         read_tree.range((offset-(max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
                     }
+                    // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                     else {
                         read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
                     }
@@ -532,7 +545,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             // print haplotypes
                             debug!("Should print haplotypes");
                             observations.print_haplotypes(
-                                gene, transcript, offset, window_len, refseq, fasta_writer, csv_writer, prot_writer, only_relevant
+                                gene, transcript, offset, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
                             )?;
                             exon_rest = match transcript.strand {
                                 Strand::Forward => exon.end - (offset + window_len),
@@ -563,7 +576,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     bcf_reader: bcf::Reader,
     bam_reader: bam::IndexedReader,
     fasta_writer: &mut fasta::Writer<O>,
-    csv_writer: &mut csv::Writer<fs::File>,
+    tsv_writer: &mut csv::Writer<fs::File>,
     prot_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     only_relevant: bool
@@ -581,7 +594,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             if gene.biotype == "protein_coding" {
                 phase_gene(
                     &gene, fasta_reader, &mut read_buffer,
-                    &mut variant_buffer, fasta_writer, csv_writer, prot_writer,
+                    &mut variant_buffer, fasta_writer, tsv_writer, prot_writer,
                     window_len,
                     &mut refseq,
                     only_relevant

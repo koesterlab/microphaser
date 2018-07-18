@@ -30,11 +30,11 @@ args:
       short: w
       default_value: "27"
       help: Length of generated haplotypes.
-  - csv:
-      long: csv
-      short: c
-      default_value: "out.csv"
-      help: CSV output for further information on haplotype IDs
+  - tsv:
+      long: tsv
+      short: t
+      default_value: "out.tsv"
+      help: TSV output for further information on haplotype IDs
   - relevant:
       long: only-relevant
       short: or
