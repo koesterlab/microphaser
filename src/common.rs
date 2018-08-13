@@ -189,24 +189,24 @@ impl Interval {
 }
 
 
-#[derive(Debug)]
-pub struct VariantBuffer {
-    pub buffer: bcf::buffer::RecordBuffer,
-    pub btree: BTreeMap<u32, bcf::Record>
-}
+//#[derive(Debug)]
+//pub struct VariantBuffer {
+//    pub buffer: bcf::buffer::RecordBuffer,
+//    pub btree: BTreeMap<u32, bcf::Record>
+//}
 
-impl VariantBuffer {
-    pub fn new(bcf_reader: bcf::Reader) -> Self {
-        VariantBuffer {
-            buffer: bcf::buffer::RecordBuffer::new(bcf_reader),
-            btree: BTreeMap::new()
-        }
-    }
+//impl VariantBuffer {
+//    pub fn new(bcf_reader: bcf::Reader) -> Self {
+//        VariantBuffer {
+//            buffer: bcf::buffer::RecordBuffer::new(bcf_reader),
+//            btree: BTreeMap::new()
+//        }
+//    }
 
 //    pub fn update_btree(&mut self, rec: &bcf::Record) {
 //        self.btree.insert(rec.pos(),*rec);
 //    }
-}
+//}
 
 //#[derive(Debug)]
 //pub struct SubRecord {

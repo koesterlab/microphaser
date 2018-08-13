@@ -212,12 +212,17 @@ impl ObservationMatrix {
                 obs.update_haplotype(i, variant)?;
             }
             // debug!("Read: {}; haplotype: {}", String::from_utf8_lossy(obs.read.qname()), obs.haplotype);
-            if reverse {
-                self.observations.entry(start_pos).or_insert_with(|| Vec::new()).push(obs);
-            }
-            else {
-                self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(obs);
-            }
+            let pos = match reverse {
+                true => start_pos,
+                false => end_pos
+            };
+            self.observations.entry(pos).or_insert_with(|| Vec::new()).push(obs);
+//            if reverse {
+//                self.observations.entry(start_pos).or_insert_with(|| Vec::new()).push(obs);
+//            }
+//            else {
+//                self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(obs);
+//            }
         }
         Ok(())
     }
@@ -289,66 +294,60 @@ impl ObservationMatrix {
                                 j += 1;
                             }
                             match variants[j] {
+                                // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
                                 &Variant::SNV { alt, .. } => {
                                     seq.push(switch_ascii_case(alt));
                                     i += 1;
                                 },
+                                // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
                                 &Variant::Insertion { seq: ref s, .. } => {
                                     seq.extend(switch_ascii_case_vec(s).into_iter());
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
+                                // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
                                     seq.push(refseq[(i - gene.start()) as usize]);
                                     i += len + 1;
                                     window_end += len + 1;
                                 }
                             }
+                            // counting somatic variants
                             if !variants[j].is_germline() {
                                 n_somatic += 1;
                             }
+                            // counting total number of variants
                             n_variants += 1;
                             j += 1;
                         } else {
                             j += 1;
                         }
                     }
+                    // if no variant, just push the reference sequence
                     seq.push(refseq[(i - gene.start()) as usize]);
                     i += 1
                 }
             }
 
             let mut shaid = sha1::Sha1::new();
+            // generate unique haplotype ID containing position, transcript and sequence
             let mut id = format!("{:?}{}{}", &seq, transcript.id, offset);
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
+            // gathering meta information on haplotype
             let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, strand: strand.to_string()};
+            
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
+            // collect "background" haplotypes (only wildtype) for similarity comparison with neopeptides
             if !(only_relevant) && record.nvar == 0 && record.freq == 1.00 {
                 prot_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 }
+            // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
             if record.freq < 1.00 || record.nvar > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 tsv_writer.serialize(record)?;
             }
-
-//            debug!("Writing to fasta");
-//            fasta_writer.write(
-////                &format!(
-////                    "{}:{{\"offset\":{},\"af\":{:.2},\"variants\":{},\"somatic\":{},\"strand\":{}}}",
-////                    transcript.id, offset, freq, n_variants, n_somatic, strand
-////                ),
-//                &format!(
-//                    "{}", fasta_id
-//                ),
-//                None,
-//                // restrict to window len (it could be that we insert too much above)
-//                &seq[..window_len as usize]
-//            )?;
-
-
-//            tsv_writer.serialize(record)?;
         }
         Ok(())
     }
@@ -487,11 +486,14 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 debug!("Variants deleted: {}", deleted_vars);
                 {
                     // delete rows
-                    if transcript.strand == Strand::Reverse {
-                        observations.cleanup_reads(offset, true);
+                    let reverse = match transcript.strand {
+                        Strand::Reverse => true,
+                        _ => false};
+                    if reverse {
+                        observations.cleanup_reads(offset, reverse);
                     }
                     else {
-                        observations.cleanup_reads(offset + window_len, false);
+                        observations.cleanup_reads(offset + window_len, reverse);
                     }
                     // delete columns
                     observations.shrink_left(deleted_vars);
@@ -499,13 +501,13 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // add new reads
                     debug!("Reads: {}", reads.len());
                     for read in reads {
-
-                        if transcript.strand == Strand::Reverse {
-                            observations.push_read(read.clone(), offset + window_len, offset, true)?;
-                        }
-                        else {
-                            observations.push_read(read.clone(), offset + window_len, offset, false)?;
-                        }
+                        observations.push_read(read.clone(), offset + window_len, offset, reverse)?;
+//                        if transcript.strand == Strand::Reverse {
+//                            observations.push_read(read.clone(), offset + window_len, offset, true)?;
+//                        }
+//                        else {
+//                            observations.push_read(read.clone(), offset + window_len, offset, false)?;
+//                        }
                     }
 
 
@@ -607,6 +609,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     for record in gtf_reader.records() {
         let record = record?;
+        match record.strand() {
+            Some(Strand::Forward) => (),
+            Some(Strand::Reverse) => (),
+            _ => panic!("Strand unknown in GTF. Should be + or -")}
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
