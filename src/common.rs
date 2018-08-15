@@ -122,17 +122,35 @@ impl Gene {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum PhasingStrand {
+    Forward,
+    Reverse,
+}
+
+impl From<Strand> for PhasingStrand{
+    fn from(strand: Strand) -> Self {
+        let s = match strand {
+            Strand::Forward => PhasingStrand::Forward,
+            Strand::Reverse => PhasingStrand::Reverse,
+            _ => panic!(
+                "Unsupported Strand orientation! Only Forward (+) and Reverse(-) allowed"
+            ),
+        };
+        s
+    }
+}
 
 #[derive(Debug)]
 pub struct Transcript {
     pub id: String,
-    pub strand: Strand,
+    pub strand: PhasingStrand,
     pub exons: Vec<Interval>,
 }
 
 
 impl Transcript {
-    pub fn new(id: &str, strand: Strand) -> Self {
+    pub fn new(id: &str, strand: PhasingStrand) -> Self {
         Transcript {
             id: id.to_owned(),
             strand: strand,

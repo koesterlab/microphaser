@@ -17,7 +17,7 @@ use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
 
 
-use common::{Gene, Variant, Interval, Transcript};
+use common::{Gene, Variant, Interval, Transcript, PhasingStrand};
 
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
@@ -260,8 +260,8 @@ impl ObservationMatrix {
 
         // Strand orientation
         let strand = match transcript.strand {
-            Strand::Reverse => "Reverse",
-            _ => "Forward"
+            PhasingStrand::Reverse => "Reverse",
+            PhasingStrand::Forward => "Forward"
         };
 
         for (haplotype, count) in haplotypes.iter() {
@@ -409,7 +409,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 _ => 3 - exon_rest
             };
             exon_rest = 0;
-            let mut offset = if transcript.strand == Strand::Reverse {
+            let mut offset = if transcript.strand == PhasingStrand::Reverse {
                 exon.end - window_len - current_exon_offset
             } else {
                 exon.start + current_exon_offset
@@ -420,9 +420,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             last_window_vars = 0;
             loop {
                 let valid = match transcript.strand {
-                    Strand::Reverse => offset >= exon.start,
-                    Strand::Forward => offset + window_len < exon.end,
-                    Strand::Unknown => offset + window_len < exon.end
+                    PhasingStrand::Reverse => offset >= exon.start,
+                    PhasingStrand::Forward => offset + window_len < exon.end
                 };
                 if !valid {
                     break;
@@ -459,7 +458,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
 
                 debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
-                let mut reads = if transcript.strand == Strand::Reverse {
+                let mut reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.end - window_len - current_exon_offset {
                         read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
@@ -487,8 +486,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 {
                     // delete rows
                     let reverse = match transcript.strand {
-                        Strand::Reverse => true,
-                        _ => false};
+                        PhasingStrand::Reverse => true,
+                        PhasingStrand::Forward => false};
                     if reverse {
                         observations.cleanup_reads(offset, reverse);
                     }
@@ -513,9 +512,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // collect variants
                     let variants = match transcript.strand {
-                        Strand::Reverse => variant_tree.range_mut(offset..(offset + window_len)).rev()
+                        PhasingStrand::Reverse => variant_tree.range_mut(offset..(offset + window_len)).rev()
                         .map(|var| var.1.clone()).flatten().skip(nvars - added_vars).collect_vec(),
-                        _ => variant_tree.range_mut(offset..(offset + window_len)
+                        PhasingStrand::Forward => variant_tree.range_mut(offset..(offset + window_len)
                         ).map(|var| var.1.clone()).flatten().skip(nvars - added_vars).collect_vec()
                     };
                     debug!("Variants(after deleting and adding): {}", variants.len());
@@ -536,10 +535,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     observations.extend_right(variants)?;
 
                     for (_, &frameshift) in frameshifts.range(..offset) {
+                        // possible shift if exon starts with the rest of a split codon (splicing)
                         let coding_shift = match transcript.strand {
-                                Strand::Forward => offset - exon.start,
-                                Strand::Reverse => exon.end - offset,
-                                Strand::Unknown => offset - exon.start
+                                PhasingStrand::Forward => offset - exon.start,
+                                PhasingStrand::Reverse => exon.end - offset
                         };
                         debug!("Offset - Exonstart % 3: {}", coding_shift % 3);
                         debug!("Shift: {}", frameshift + current_exon_offset);
@@ -549,20 +548,18 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             observations.print_haplotypes(
                                 gene, transcript, offset, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
                             )?;
+                            // possible unfinished codon at the end of an exon that continues at the start of the next exon
                             exon_rest = match transcript.strand {
-                                Strand::Forward => exon.end - (offset + window_len),
-                                Strand::Reverse => offset - exon.start,
-                                Strand::Unknown => exon.end - (offset + window_len)
+                                PhasingStrand::Forward => exon.end - (offset + window_len),
+                                PhasingStrand::Reverse => offset - exon.start
                             };
                             debug!("Exon Rest {}", exon_rest);
                         }
                     }
-                    //offset += 1;
                     old_offset = offset;
                     match transcript.strand {
-                        Strand::Reverse => offset -= 1,
-                        Strand::Forward => offset += 1,
-                        Strand::Unknown => offset += 1
+                        PhasingStrand::Reverse => offset -= 1,
+                        PhasingStrand::Forward => offset += 1
                     }
                 }
             }
@@ -609,10 +606,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     for record in gtf_reader.records() {
         let record = record?;
-        match record.strand() {
-            Some(Strand::Forward) => (),
-            Some(Strand::Reverse) => (),
-            _ => panic!("Strand unknown in GTF. Should be + or -")}
+//        match record.strand() {
+//            Some(Strand::Forward) => (),
+//            Some(Strand::Reverse) => (),
+//            _ => panic!("Strand unknown in GTF. Should be + or -")}
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
@@ -633,9 +630,9 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     Transcript::new(record.attributes().get("transcript_id").expect(
                         "missing transcript_id attribute in GTF"
                     ),
-                    record.strand().expect(
+                    PhasingStrand::from(record.strand().expect(
                     "missing strand information in GTF"
-                    ))
+                    )))
                 );
             },
             "CDS" => {
