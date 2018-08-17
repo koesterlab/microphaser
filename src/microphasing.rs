@@ -358,7 +358,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     gene: &Gene,
     fasta_reader: &mut fasta::IndexedReader<F>,
     read_buffer: &mut bam::RecordBuffer,
-    variant_buffer: &mut bcf::RecordBuffer,
+    variant_buffer: &mut bcf::buffer::RecordBuffer,
     fasta_writer: &mut fasta::Writer<O>,
     tsv_writer: &mut csv::Writer<fs::File>,
     prot_writer: &mut fasta::Writer<fs::File>,
@@ -581,7 +581,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     only_relevant: bool
 ) -> Result<(), Box<Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader);
-    let mut variant_buffer = bcf::RecordBuffer::new(bcf_reader);
+    let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());
 
