@@ -48,7 +48,7 @@ fn download_reference(chrom: &str) -> String {
 fn test_empty() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr14");
-    microphaser("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/empty_test.vcf --csv test/output/forward_test.csv --proteome test/output/forward_test.prot.fa --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf"), reference);
+    microphaser(format!("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/empty_test.vcf --csv test/output/forward_test.csv --proteome test/output/forward_test.prot.fa --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf"), reference));
     test_output("tests/output/empty_test.fa", "tests/resources/test_forward/expected_output/empty_test.fasta.out");
     test_output("tests/output/empty_test.prot.fa", "tests/resources/test_forward/expected_output/empty_test.prot.out");
 }
@@ -57,7 +57,7 @@ fn test_empty() {
 fn test_forward() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr14");
-    microphaser("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/forward_test.vcf --csv test/output/forward_test.csv --proteome test/output/forward_test.prot.fa --ref {} > tests/output/forward_test.fa < tests/resources/test_forward/forward_test.gtf"), reference);
+    microphaser(format!("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/forward_test.vcf --csv test/output/forward_test.csv --proteome test/output/forward_test.prot.fa --ref {} > tests/output/forward_test.fa < tests/resources/test_forward/forward_test.gtf"), reference));
     test_output("tests/output/forward_test.fa", "tests/resources/test_forward/expected_output/forward_test.fasta.out");
     test_output("tests/output/forward_test.prot.fa", "tests/resources/test_forward/expected_output/forward_test.prot.out");
     test_output("tests/output/forward_test.csv", "tests/resources/test_forward/expected_output/forward_test.csv");
@@ -67,7 +67,7 @@ fn test_forward() {
 fn test_reverse() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr1");
-    microphaser("tests/resources/test_reverse/reverse_test.bam --variants tests/resources/test_reverse/reverse_test.vcf --csv test/output/reverse_test.csv --proteome test/output/reverse_test.prot.fa --ref {} > tests/output/reverse_test.fa < tests/resources/test_reverse/reverse_test.gtf"), reference);
+    microphaser(format!("tests/resources/test_reverse/reverse_test.bam --variants tests/resources/test_reverse/reverse_test.vcf --csv test/output/reverse_test.csv --proteome test/output/reverse_test.prot.fa --ref {} > tests/output/reverse_test.fa < tests/resources/test_reverse/reverse_test.gtf"), reference));
     test_output("tests/output/reverse_test.fa", "tests/resources/test_reverse/expected_output/reverse_test.fasta.out");
     test_output("tests/output/reverse_test.prot.fa", "tests/resources/test_reverse/expected_output/reverse_test.prot.out");
     test_output("tests/output/reverse_test.csv", "tests/resources/test_reverse/expected_output/reverse_test.csv");
