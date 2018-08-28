@@ -178,9 +178,9 @@ impl ObservationMatrix {
     /// Remove all reads that do not enclose interval end.
     pub fn cleanup_reads(&mut self, interval_end: u32, reverse: bool) {
         debug!("Number of reads(before removal): {}", self.observations.len());
-        //let observations = self.observations.split_off(&interval_end);
+        let observations = self.observations.split_off(&interval_end);
         if !reverse {
-            self.observations = self.observations.split_off(&interval_end);
+            self.observations = observations;//self.observations.split_off(&interval_end);
         }
         debug!("Number of reads(after removal): {}",  self.observations.len());
     }
@@ -426,7 +426,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if !valid {
                     break;
                 }
-
+                debug!("Offset {}, old offset {}", offset, old_offset);
                 // advance window to next position
                 let nvars = variant_tree.range(offset..(offset + window_len)).map(|var| var.1).flatten().count();
                 // store number of variants in window in case it is the last window for this exon
