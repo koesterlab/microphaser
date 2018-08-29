@@ -19,14 +19,29 @@ args:
       value_name: FILE
       required: true
       help: The reference genome.
-  - annotation:
-      long: track
-      short: t
+  - variants:
+      long: variants
+      short: b
       value_name: FILE
       required: true
-      help: A GTF annotation track.
+      help: A bcf/vcf file containing variants.
   - window-len:
       long: window-len
       short: w
       default_value: "27"
       help: Length of generated haplotypes.
+  - tsv:
+      long: tsv
+      short: t
+      default_value: "out.tsv"
+      help: TSV output for further information on haplotype IDs
+  - relevant:
+      long: only-relevant
+      short: or
+      help: Output only relevant haplotypes (spanning over variant positions)
+  - proteome:
+      long: proteome
+      short: p
+      value_name: FILE
+      default_value: "proteome.fasta"
+      help: Output wildtype haplotypes to proteome file

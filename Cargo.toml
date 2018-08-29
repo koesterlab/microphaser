@@ -5,9 +5,17 @@ authors = ["Johannes Köster <johannes.koester@tu-dortmund.de>"]
 
 [dependencies]
 bio = "0.16"
-rust-htslib = { git = "https://github.com/rust-bio/rust-htslib.git", branch = "master" }
+rust-htslib = "0.21"
 clap = { version = "2.27", features = ["yaml", "color", "suggestions"]}
 itertools = "0.6"
 log = "0.4"
 vec_map = "0.8"
 fern = "0.5"
+csv = "1"
+serde = "1"
+serde_derive = "1"
+sha1 = "0.6"
+hyper = "0.10"
+flate2 = "0.2"
+http = "0.1"
+env_logger = "0.5"
