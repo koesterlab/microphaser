@@ -93,6 +93,7 @@ pub struct IDRecord{
     freq: f64,
     nvar: u32,
     nsomatic: u32,
+    nvariant_sites: u32,
     strand: String
 }
 
@@ -335,7 +336,7 @@ impl ObservationMatrix {
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // gathering meta information on haplotype
-            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, strand: strand.to_string()};
+            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: variants.len() as u32, strand: strand.to_string()};
             
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
