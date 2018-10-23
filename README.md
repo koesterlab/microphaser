@@ -14,7 +14,7 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
   
   You can run microphaser like this:
 
-  ```microphase tumor.bam -r reference.fa -b variants.vcf -t haplotypes.info.tsv < reference.gtf > haplotypes.fa```
+  ```microphaser tumor.bam -r reference.fa -b variants.vcf -t haplotypes.info.tsv < reference.gtf > haplotypes.fa```
 
   `haplotypes.fa` will be a fasta file containing the phased haplotype sequences, with unique hash values as identifier.  
   These IDs can be used to find other information about this haplotype in `haplotypes.info.tsv`.  
