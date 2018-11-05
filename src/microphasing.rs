@@ -89,12 +89,15 @@ pub struct IDRecord{
     transcript: String,
     gene_id: String,
     gene_name: String,
+    chrom: String,
     offset: u32,
     freq: f64,
     nvar: u32,
     nsomatic: u32,
     nvariant_sites: u32,
-    strand: String
+    strand: String,
+    positions: String,
+    aa_change: String
 }
 
 
@@ -287,6 +290,7 @@ impl ObservationMatrix {
                     debug!("i: {}", i);
                     debug!("j: {}", j);
                     // TODO what happens if a deletion starts upstream of window and overlaps it
+                    
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
                         if bitvector_is_set(haplotype, j) {
@@ -313,6 +317,7 @@ impl ObservationMatrix {
                                     window_end += len + 1;
                                 }
                             }
+
                             // counting somatic variants
                             if !variants[j].is_germline() {
                                 n_somatic += 1;
@@ -330,13 +335,33 @@ impl ObservationMatrix {
                 }
             }
 
+
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let mut id = format!("{:?}{}{}", &seq, transcript.id, offset);
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // gathering meta information on haplotype
-            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: variants.len() as u32, strand: strand.to_string()};
+            let mut n_variantsites = 0;
+            let mut c = 0;
+            let mut p_changes = String::new();
+            let mut var_pos = String::new();
+            while c<variants.len() as u32 {
+                if c == 0 {
+                    var_pos = format!("{}",variants[0].pos());
+                    p_changes = variants[0].prot_change();
+                    n_variantsites += 1;
+                }
+                else {
+                    var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
+                    p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
+                    if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                        n_variantsites += 1;
+                    }
+                }
+                c += 1
+            }
+            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos, aa_change: p_changes};
             
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
