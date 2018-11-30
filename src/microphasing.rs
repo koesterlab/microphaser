@@ -101,6 +101,12 @@ pub struct IDRecord{
 }
 
 
+#[derive(Debug)]
+pub struct HaplotypeSeq {
+    sequence: Vec<u8>,
+    frequency: f64
+}
+
 
 
 #[derive(Debug)]
@@ -239,18 +245,20 @@ impl ObservationMatrix {
         self.observations.values().map(|o| o.len()).sum()
     }
 
-    pub fn print_haplotypes<O: io::Write>(
+    pub fn print_haplotypes<O: io::Write> (
         &self,
         gene: &Gene,
         transcript: &Transcript,
         offset: u32,
+        exon_end: u32,
+        exon_start: u32,
         window_len: u32,
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
         prot_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
-    ) -> Result<(), Box<Error>> {
+    ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
@@ -267,6 +275,8 @@ impl ObservationMatrix {
             PhasingStrand::Reverse => "Reverse",
             PhasingStrand::Forward => "Forward"
         };
+
+        let mut haplotypes_vec = Vec::new();
 
         for (haplotype, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
@@ -335,6 +345,25 @@ impl ObservationMatrix {
                 }
             }
 
+            // make haplotype record to carry over to next exon
+            let rest = exon_end - window_end;
+            let start = offset - exon_start;
+            // if there are split-codon bases left at the end of the exon, add them to the sequence
+            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), frequency: 0.0};
+            if rest < 3 {
+                let mut newseq = Vec::new();
+                newseq.extend(&seq[3 as usize..window_len as usize]);
+                newseq.extend_from_slice(&refseq[window_end as usize..exon_end as usize]);
+                hap_seq = HaplotypeSeq {sequence: newseq, frequency: freq};
+            }
+            // if there are split-codon bases at the start of an exon, add them to the sequence
+            if start < 3 {
+                let mut newseq = refseq[(exon_start as usize)..(offset as usize)].to_vec();
+                newseq.extend(&seq[..(window_len - 3) as usize]);
+                hap_seq = HaplotypeSeq {sequence: newseq, frequency: freq};
+            }
+
+            haplotypes_vec.push(hap_seq);
 
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
@@ -375,8 +404,21 @@ impl ObservationMatrix {
                 tsv_writer.serialize(record)?;
             }
         }
-        Ok(())
+        Ok(haplotypes_vec)
     }
+}
+
+
+pub fn close_splicing_gap<O: io::Write> (
+    prev_hap_vec: &Vec<HaplotypeSeq>,
+    hap_vec: &Vec<HaplotypeSeq>,
+    fasta_writer: &mut fasta::Writer<O>,
+    tsv_writer: &mut csv::Writer<fs::File>,
+    prot_writer: &mut fasta::Writer<fs::File>
+) -> Result<(), Box<Error>> {
+//    for prev_hapseq in prev_hap_vec:
+//        
+    Ok(())
 }
 
 
@@ -424,6 +466,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         frameshifts.insert(0, 0);
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
+        // Haplotypes from the end of the last exon
+        let mut prev_hap_vec = Vec::new();
+        let mut hap_vec = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         for exon in &transcript.exons {
@@ -571,9 +616,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if coding_shift % 3 == frameshift + current_exon_offset {
                             // print haplotypes
                             debug!("Should print haplotypes");
-                            observations.print_haplotypes(
-                                gene, transcript, offset, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
-                            )?;
+                            hap_vec = observations.print_haplotypes(
+                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+                            ).unwrap();
                             // possible unfinished codon at the end of an exon that continues at the start of the next exon
                             exon_rest = match transcript.strand {
                                 PhasingStrand::Forward => exon.end - (offset + window_len),
@@ -582,6 +627,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             debug!("Exon Rest {}", exon_rest);
                         }
                     }
+
+                    if offset - current_exon_offset == exon.start {
+                        close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
+                    }
+                    prev_hap_vec = hap_vec;
+
                     old_offset = offset;
                     match transcript.strand {
                         PhasingStrand::Reverse => offset -= 1,
