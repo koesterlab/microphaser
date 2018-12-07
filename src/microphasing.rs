@@ -100,12 +100,37 @@ pub struct IDRecord{
     aa_change: String
 }
 
+impl IDRecord{
+    pub fn update(&self, rec: &IDRecord, offset: u32, seq: Vec<u8>) -> Self {
+        let mut shaid = sha1::Sha1::new();
+        // generate unique haplotype ID containing position, transcript and sequence
+        let id = format!("{:?}{}{}", &seq, &self.transcript, offset);
+        shaid.update(id.as_bytes());
+        let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], self.strand.chars().next().unwrap());
+        let mut positions = self.positions.clone();
+        positions.push_str(&rec.positions);
+        let mut aa_change = self.aa_change.clone();
+        aa_change.push_str(&rec.aa_change);
+        debug!("nvars {} {}",self.nvar,rec.nvar);
+        IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
+            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
+            strand: self.strand.to_owned(), positions: positions, aa_change: aa_change}
+    }
+}
+
 
 #[derive(Debug)]
 pub struct HaplotypeSeq {
     sequence: Vec<u8>,
-    frequency: f64
+    record: IDRecord
 }
+
+//impl HaplotypeSeq {
+//    pub fn new() ->
+//    pub fn sequence(&self) -> Vec<u8> {
+//        &self.sequence
+//    }
+//}
 
 
 
@@ -345,25 +370,7 @@ impl ObservationMatrix {
                 }
             }
 
-            // make haplotype record to carry over to next exon
-            let rest = exon_end - window_end;
-            let start = offset - exon_start;
-            // if there are split-codon bases left at the end of the exon, add them to the sequence
-            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), frequency: 0.0};
-            if rest < 3 {
-                let mut newseq = Vec::new();
-                newseq.extend(&seq[3 as usize..window_len as usize]);
-                newseq.extend_from_slice(&refseq[window_end as usize..exon_end as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, frequency: freq};
-            }
-            // if there are split-codon bases at the start of an exon, add them to the sequence
-            if start < 3 {
-                let mut newseq = refseq[(exon_start as usize)..(offset as usize)].to_vec();
-                newseq.extend(&seq[..(window_len - 3) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, frequency: freq};
-            }
 
-            haplotypes_vec.push(hap_seq);
 
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
@@ -390,8 +397,31 @@ impl ObservationMatrix {
                 }
                 c += 1
             }
-            let record = IDRecord {id: fasta_id, transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos, aa_change: p_changes};
+            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()};
             
+            // make haplotype record to carry over to next exon
+            let rest = exon_end - window_end;
+            debug!("Rest: {}", rest);
+            let start = offset - exon_start;
+            debug!("Start: {}", start);
+            // if there are split-codon bases left at the end of the exon, add them to the sequence
+            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+            if rest < 3 {
+                let mut newseq = Vec::new();
+                newseq.extend(&seq[3 as usize..window_len as usize]);
+                newseq.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+            }
+            // if there are split-codon bases at the start of an exon, add them to the sequence
+            if start < 3 {
+                let mut newseq = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
+                debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
+                newseq.extend(&seq[..(window_len - 3) as usize]);
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+            }
+
+            haplotypes_vec.push(hap_seq);
+
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
             // collect "background" haplotypes (only wildtype) for similarity comparison with neopeptides
@@ -403,23 +433,26 @@ impl ObservationMatrix {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 tsv_writer.serialize(record)?;
             }
+
+
+
         }
         Ok(haplotypes_vec)
     }
 }
 
 
-pub fn close_splicing_gap<O: io::Write> (
-    prev_hap_vec: &Vec<HaplotypeSeq>,
-    hap_vec: &Vec<HaplotypeSeq>,
-    fasta_writer: &mut fasta::Writer<O>,
-    tsv_writer: &mut csv::Writer<fs::File>,
-    prot_writer: &mut fasta::Writer<fs::File>
-) -> Result<(), Box<Error>> {
-//    for prev_hapseq in prev_hap_vec:
-//        
-    Ok(())
-}
+//pub fn close_splicing_gap<O: io::Write> (
+//    prev_hap_vec: &Vec<HaplotypeSeq>,
+//    hap_vec: &Vec<HaplotypeSeq>,
+//    fasta_writer: &mut fasta::Writer<O>,
+//    tsv_writer: &mut csv::Writer<fs::File>,
+//    prot_writer: &mut fasta::Writer<fs::File>
+//) -> Result<(), Box<Error>> {
+////    for prev_hapseq in prev_hap_vec:
+////        
+//    Ok(())
+//}
 
 
 pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
@@ -467,8 +500,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
         // Haplotypes from the end of the last exon
-        let mut prev_hap_vec = Vec::new();
-        let mut hap_vec = Vec::new();
+        let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
+        let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         for exon in &transcript.exons {
@@ -616,22 +649,81 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if coding_shift % 3 == frameshift + current_exon_offset {
                             // print haplotypes
                             debug!("Should print haplotypes");
-                            hap_vec = observations.print_haplotypes(
-                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
-                            ).unwrap();
+//                            hap_vec = observations.print_haplotypes(
+//                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+//                            ).unwrap();
                             // possible unfinished codon at the end of an exon that continues at the start of the next exon
                             exon_rest = match transcript.strand {
                                 PhasingStrand::Forward => exon.end - (offset + window_len),
                                 PhasingStrand::Reverse => offset - exon.start
                             };
                             debug!("Exon Rest {}", exon_rest);
+                            if exon_rest < 3 {
+                                prev_hap_vec = observations.print_haplotypes(
+                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+                            ).unwrap(); }
+                            else {
+                                hap_vec = observations.print_haplotypes(
+                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+                            ).unwrap(); }
                         }
                     }
 
-                    if offset - current_exon_offset == exon.start {
-                        close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
+                    let at_splice_side = match transcript.strand {
+                                PhasingStrand::Forward => offset - current_exon_offset == exon.start,
+                                PhasingStrand::Reverse => offset + window_len + current_exon_offset == exon.end 
+                    };
+
+
+                    if at_splice_side {
+                        let first_hap_vec = match transcript.strand {
+                                PhasingStrand::Forward => &hap_vec,
+                                PhasingStrand::Reverse => &prev_hap_vec 
+                        };
+                        let sec_hap_vec = match transcript.strand {
+                                PhasingStrand::Forward => &prev_hap_vec,
+                                PhasingStrand::Reverse => &hap_vec
+                        };
+                        //close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
+                        //let it = prev_hap_vec.cartesian_product(hap_vec);
+                        //let mut splice_sequences = Vec::new();
+                        for hapseq in first_hap_vec{
+                            let sequence = &hapseq.sequence;
+                            let record = &hapseq.record;
+                            for prev_hapseq in sec_hap_vec {
+                                let mut prev_sequence = prev_hapseq.sequence.clone();
+                                let prev_record = &prev_hapseq.record;
+//                                match transcript.strand {
+//                                    PhasingStrand::Forward => prev_sequence.extend(sequence),
+//                                    PhasingStrand::Reverse => sequence.extend(prev_sequence)
+//                                };
+//                                let complete_seq = match transcript.strand {
+//                                    PhasingStrand::Forward => prev_sequence,
+//                                    PhasingStrand::Reverse => sequence
+//                                };
+                                prev_sequence.extend(sequence);
+                                debug!("Complete Sequence : {:?}", String::from_utf8_lossy(&prev_sequence));
+                                let mut splice_offset = 0;
+                                while (splice_offset + window_len < prev_sequence.len() as u32) {
+                                    let out_seq = &prev_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
+                                    debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));
+                                    let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
+                                    if !(only_relevant) && out_record.nvar == 0 && record.freq == 1.00 {
+                                        prot_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+                                    }
+                                    // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
+                                    if record.freq < 1.00 || out_record.nvar > 0 {
+                                        fasta_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+                                        tsv_writer.serialize(out_record)?;
+                                    }
+                                    splice_offset += 3;
+                                }
+                                //splice_sequences.push(HaplotypeSeq {sequence: prev_sequence, frequency: complete_freq});
+                            }
+                        }
+                        //prev_hap_vec = Vec::new();
                     }
-                    prev_hap_vec = hap_vec;
+                    //prev_hap_vec = hap_vec;
 
                     old_offset = offset;
                     match transcript.strand {
