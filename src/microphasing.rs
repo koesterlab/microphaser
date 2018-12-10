@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::collections::{VecDeque, BTreeMap};
+use std::collections::{VecDeque, BTreeMap, HashMap};
 use std::io;
 use std::fs;
 
@@ -116,6 +116,17 @@ impl IDRecord{
             offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
             strand: self.strand.to_owned(), positions: positions, aa_change: aa_change}
     }
+
+    pub fn add_freq(&self, freq: f64) -> Self {
+        let new_nvar = match freq{
+            f if f > 0.0 => self.nvar - 1,
+            _ => self.nvar
+        };
+        IDRecord{id: self.id.to_owned(), transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
+            offset: self.offset, freq: self.freq + freq, nvar: new_nvar, nsomatic: self.nsomatic , nvariant_sites: self.nvariant_sites,
+            strand: self.strand.to_owned(), positions: self.positions.to_owned(), aa_change: self.aa_change.to_owned()}
+    }
+
 }
 
 
@@ -669,6 +680,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         }
                     }
 
+                    // check if the current offset is at a splice side
                     let at_splice_side = match transcript.strand {
                                 PhasingStrand::Forward => offset - current_exon_offset == exon.start,
                                 PhasingStrand::Reverse => offset + window_len + current_exon_offset == exon.end 
@@ -687,6 +699,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         //close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
                         //let it = prev_hap_vec.cartesian_product(hap_vec);
                         //let mut splice_sequences = Vec::new();
+                        let mut output_map: BTreeMap<(u32, Vec<u8>), (Vec<u8>, IDRecord)> = BTreeMap::new();
+
+                        // iterate over all combinations of splice side haplotypes
                         for hapseq in first_hap_vec{
                             let sequence = &hapseq.sequence;
                             let record = &hapseq.record;
@@ -701,30 +716,55 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 //                                    PhasingStrand::Forward => prev_sequence,
 //                                    PhasingStrand::Reverse => sequence
 //                                };
+                                // paste together a sequence spanning the splice side
                                 prev_sequence.extend(sequence);
                                 debug!("Complete Sequence : {:?}", String::from_utf8_lossy(&prev_sequence));
+                                // slide window over the spanning sequence
                                 let mut splice_offset = 0;
                                 while (splice_offset + window_len < prev_sequence.len() as u32) {
                                     let out_seq = &prev_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
-                                    debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));
                                     let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
-                                    if !(only_relevant) && out_record.nvar == 0 && record.freq == 1.00 {
-                                        prot_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
-                                    }
-                                    // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-                                    if record.freq < 1.00 || out_record.nvar > 0 {
-                                        fasta_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
-                                        tsv_writer.serialize(out_record)?;
-                                    }
+                                    debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));
+                                    // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
+                                    let id_tuple = (splice_offset, out_seq.to_vec());
+//                                    match output_map.get_mut(&id_tuple) {
+//                                        Some(old_entry) => {
+//                                            let old_freq = old_entry.1.freq;
+//                                            *old_entry = (out_seq.to_vec(), out_record.add_freq(old_freq));
+//                                        },
+//                                        None => {
+//                                            output_map.insert(id_tuple, (out_seq.to_vec(), out_record));
+//                                        }
+//                                    }
+                                    let old_freq = match output_map.get_mut(&id_tuple) {
+                                        Some(x) => x.1.freq,
+                                        None => 0.0
+                                    };
+                                    *output_map.entry(id_tuple).or_insert((out_seq.to_vec(), out_record)) = (out_seq.to_vec(), out_record.add_freq(old_freq));
                                     splice_offset += 3;
                                 }
-                                //splice_sequences.push(HaplotypeSeq {sequence: prev_sequence, frequency: complete_freq});
                             }
                         }
-                        //prev_hap_vec = Vec::new();
+//                      let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
+                        for (_key, val) in output_map.iter() {
+                            let out_record = &val.1;
+                            let out_seq = &val.0;
+                            if !(only_relevant) && out_record.nvar == 0 && out_record.freq == 1.00 {
+                                prot_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+                            }
+                            // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
+                            if out_record.freq < 1.00 || out_record.nvar > 0 {
+                                fasta_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+                                tsv_writer.serialize(out_record)?;
+                            }
+                        }
+                                //splice_sequences.push(HaplotypeSeq {sequence: prev_sequence, frequency: complete_freq});
+//                            }
+//                        }
+//                        //prev_hap_vec = Vec::new();
+//                    }
+//                    //prev_hap_vec = hap_vec;
                     }
-                    //prev_hap_vec = hap_vec;
-
                     old_offset = offset;
                     match transcript.strand {
                         PhasingStrand::Reverse => offset -= 1,

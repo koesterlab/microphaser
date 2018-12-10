@@ -2,6 +2,7 @@
 name = "microphaser"
 version = "0.1.0"
 authors = ["Johannes Köster <johannes.koester@tu-dortmund.de>"]
+edition = "2018"
 
 [dependencies]
 bio = "0.16"
