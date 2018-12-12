@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::collections::{VecDeque, BTreeMap, HashMap};
+use std::collections::{VecDeque, BTreeMap};
 use std::io;
 use std::fs;
 
@@ -24,16 +24,15 @@ pub fn bitvector_is_set(b: u64, k: usize) -> bool {
     (b & (1 << k)) != 0
 }
 
-pub fn switch_ascii_case(c: u8) -> u8 {
-    if c.is_ascii_uppercase() {
+pub fn switch_ascii_case(c: u8, r: u8) -> u8 {
+    if r.is_ascii_uppercase() {
         c.to_ascii_lowercase()}
     else {
-        c.to_ascii_uppercase()}
+        c}
 }
 
-pub fn switch_ascii_case_vec(v: &Vec<u8>) -> Vec<u8> {
-    let c = v[0];
-    if c.is_ascii_uppercase() {
+pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
+    if r.is_ascii_uppercase() {
         v.to_ascii_lowercase()}
     else {
         v.to_ascii_uppercase()}
@@ -42,10 +41,10 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>) -> Vec<u8> {
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
-            debug!("Variant pos: {}", variant.pos());
-            debug!("Read pos: {}", read.pos());
-            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
-            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
+//            debug!("Variant pos: {}", variant.pos());
+//            debug!("Read pos: {}", read.pos());
+//            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
+//            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
 //            for c in read.cigar().iter() {
 //                match c {
 //                    &Cigar::Del(_) => return Ok(false),
@@ -295,10 +294,18 @@ impl ObservationMatrix {
         prot_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
     ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
-        let variants = self.variants.iter().collect_vec();
+
+        let variants_forward = self.variants.iter().collect_vec();
+        let mut variants_reverse = variants_forward.clone();
+        variants_reverse.reverse();
+        let variants = match transcript.strand {
+            PhasingStrand::Reverse => variants_reverse,
+            PhasingStrand::Forward => variants_forward
+        };
         // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
         for obs in self.observations.values().flatten() {
+            debug!("obs {:?}",obs);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
         let mut seq = Vec::with_capacity(window_len as usize);
@@ -322,6 +329,10 @@ impl ObservationMatrix {
             debug!("Variants len: {}", variants.len());
             // build haplotype sequence
             seq.clear();
+            
+//            for v in &variants {
+//                debug!("Variant 0 {}", variants[0].pos());
+//                debug!("Variant_pos {}", v.pos())}
             let mut n_somatic = 0;
             let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
@@ -336,7 +347,7 @@ impl ObservationMatrix {
                     debug!("i: {}", i);
                     debug!("j: {}", j);
                     // TODO what happens if a deletion starts upstream of window and overlaps it
-                    
+
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
                         if bitvector_is_set(haplotype, j) {
@@ -347,12 +358,12 @@ impl ObservationMatrix {
                             match variants[j] {
                                 // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
                                 &Variant::SNV { alt, .. } => {
-                                    seq.push(switch_ascii_case(alt));
+                                    seq.push(switch_ascii_case(alt, refseq[(i - gene.start()) as usize]));
                                     i += 1;
                                 },
                                 // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
                                 &Variant::Insertion { seq: ref s, .. } => {
-                                    seq.extend(switch_ascii_case_vec(s).into_iter());
+                                    seq.extend(switch_ascii_case_vec(s, refseq[(i - gene.start()) as usize]).into_iter());
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
@@ -721,7 +732,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 debug!("Complete Sequence : {:?}", String::from_utf8_lossy(&prev_sequence));
                                 // slide window over the spanning sequence
                                 let mut splice_offset = 0;
-                                while (splice_offset + window_len < prev_sequence.len() as u32) {
+                                while splice_offset + window_len < prev_sequence.len() as u32 {
                                     let out_seq = &prev_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
                                     let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
                                     debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));

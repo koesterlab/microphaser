@@ -1,7 +1,7 @@
 use std::str;
 use std::error::Error;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+
 
 use bio::utils::Strand;
 use rust_htslib::bcf;
