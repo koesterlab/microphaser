@@ -547,7 +547,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             loop {
                 let valid = match transcript.strand {
                     PhasingStrand::Reverse => offset >= exon.start,
-                    PhasingStrand::Forward => offset + window_len < exon.end
+                    PhasingStrand::Forward => offset + window_len <= exon.end
                 };
                 if !valid {
                     break;
