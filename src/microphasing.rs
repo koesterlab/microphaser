@@ -94,6 +94,7 @@ pub struct IDRecord{
     nvar: u32,
     nsomatic: u32,
     nvariant_sites: u32,
+    nsomvariant_sites: u32,
     strand: String,
     positions: String,
     aa_change: String
@@ -112,7 +113,7 @@ impl IDRecord{
         aa_change.push_str(&rec.aa_change);
         debug!("nvars {} {}",self.nvar,rec.nvar);
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
-            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
+            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(), positions: positions, aa_change: aa_change}
     }
 
@@ -121,8 +122,12 @@ impl IDRecord{
             f if f > 0.0 => self.nvar - 1,
             _ => self.nvar
         };
+        let new_somatic = match new_nvar < self.nsomatic {
+            true => self.nsomatic - 1,
+            false => self.nsomatic
+        };
         IDRecord{id: self.id.to_owned(), transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
-            offset: self.offset, freq: self.freq + freq, nvar: new_nvar, nsomatic: self.nsomatic , nvariant_sites: self.nvariant_sites,
+            offset: self.offset, freq: self.freq + freq, nvar: new_nvar, nsomatic: new_somatic , nvariant_sites: self.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites,
             strand: self.strand.to_owned(), positions: self.positions.to_owned(), aa_change: self.aa_change.to_owned()}
     }
 
@@ -401,45 +406,57 @@ impl ObservationMatrix {
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
+            let mut n_som_variantsites = 0;
             let mut c = 0;
+            // protein changes
             let mut p_changes = String::new();
+            // position of the variant
             let mut var_pos = String::new();
-            while c<variants.len() as u32 {
+            // gather information iterating over the variants
+            while c < variants.len() as u32 {
                 if c == 0 {
                     var_pos = format!("{}",variants[0].pos());
                     p_changes = variants[0].prot_change();
                     n_variantsites += 1;
+                    if !(variants[0].is_germline()) {
+                        n_som_variantsites += 1;
+                    }
                 }
                 else {
                     var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
                     p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
                     if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                         n_variantsites += 1;
+                        if !(variants[c as usize].is_germline()) {
+                            n_som_variantsites += 1;
+                        }
                     }
                 }
                 c += 1
             }
-            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()};
+            // build the info record
+            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()};
             
             // make haplotype record to carry over to next exon
             let rest = exon_end - window_end;
             debug!("Rest: {}", rest);
             let start = offset - exon_start;
             debug!("Start: {}", start);
+
+            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
             // if there are split-codon bases left at the end of the exon, add them to the sequence
-            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
             if rest < 3 {
                 let mut newseq = Vec::new();
                 newseq.extend(&seq[3 as usize..window_len as usize]);
                 newseq.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
             }
             // if there are split-codon bases at the start of an exon, add them to the sequence
             if start < 3 {
                 let mut newseq = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
                 debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
                 newseq.extend(&seq[..(window_len - 3) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
             }
 
             haplotypes_vec.push(hap_seq);
@@ -447,11 +464,11 @@ impl ObservationMatrix {
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
             // collect "background" haplotypes (only wildtype) for similarity comparison with neopeptides
-            if !(only_relevant) && record.nvar == 0 && record.freq == 1.00 {
+            if !(only_relevant) && record.nsomvariant_sites == 0 {
                 prot_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 }
             // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-            if record.freq < 1.00 || record.nvar > 0 {
+            if record.nsomvariant_sites > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 tsv_writer.serialize(record)?;
             }
@@ -697,7 +714,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 PhasingStrand::Reverse => offset + window_len + current_exon_offset == exon.end 
                     };
 
-
+                    // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
                     if at_splice_side {
                         let first_hap_vec = match transcript.strand {
                                 PhasingStrand::Forward => &hap_vec,
@@ -760,11 +777,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         for (_key, val) in output_map.iter() {
                             let out_record = &val.1;
                             let out_seq = &val.0;
-                            if !(only_relevant) && out_record.nvar == 0 && out_record.freq == 1.00 {
+                            if !(only_relevant) && (out_record.nsomvariant_sites == 0 || (out_record.nsomatic == 0 && out_record.freq == 1.0)) {
                                 prot_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
                             }
                             // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-                            if out_record.freq < 1.00 || out_record.nvar > 0 {
+                            if out_record.nsomvariant_sites > 0 && (out_record.nsomatic > 0 || out_record.freq < 1.0) {
                                 fasta_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
                                 tsv_writer.serialize(out_record)?;
                             }
