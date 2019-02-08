@@ -17,7 +17,7 @@ use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
 
 
-use common::{Gene, Variant, Interval, Transcript, PhasingStrand};
+use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand};
 
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
@@ -96,8 +96,10 @@ pub struct IDRecord{
     nvariant_sites: u32,
     nsomvariant_sites: u32,
     strand: String,
-    positions: String,
-    aa_change: String
+    somatic_positions: String,
+    somatic_aa_change: String,
+    germline_positions: String,
+    germline_aa_change: String
 }
 
 impl IDRecord{
@@ -107,14 +109,18 @@ impl IDRecord{
         let id = format!("{:?}{}{}", &seq, &self.transcript, offset);
         shaid.update(id.as_bytes());
         let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], self.strand.chars().next().unwrap());
-        let mut positions = self.positions.clone();
-        positions.push_str(&rec.positions);
-        let mut aa_change = self.aa_change.clone();
-        aa_change.push_str(&rec.aa_change);
+        let mut somatic_positions = self.somatic_positions.clone();
+        somatic_positions.push_str(&rec.somatic_positions);
+        let mut somatic_aa_change = self.somatic_aa_change.clone();
+        somatic_aa_change.push_str(&rec.somatic_aa_change);
+        let mut germline_positions = self.germline_positions.clone();
+        germline_positions.push_str(&rec.germline_positions);
+        let mut germline_aa_change = self.germline_aa_change.clone();
+        germline_aa_change.push_str(&rec.germline_aa_change);
         debug!("nvars {} {}",self.nvar,rec.nvar);
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
             offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
-            strand: self.strand.to_owned(), positions: positions, aa_change: aa_change}
+            strand: self.strand.to_owned(), somatic_positions: somatic_positions, somatic_aa_change: somatic_aa_change, germline_positions: germline_positions, germline_aa_change: germline_aa_change}
     }
 
     pub fn add_freq(&self, freq: f64) -> Self {
@@ -128,7 +134,7 @@ impl IDRecord{
         };
         IDRecord{id: self.id.to_owned(), transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
             offset: self.offset, freq: self.freq + freq, nvar: new_nvar, nsomatic: new_somatic , nvariant_sites: self.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites,
-            strand: self.strand.to_owned(), positions: self.positions.to_owned(), aa_change: self.aa_change.to_owned()}
+            strand: self.strand.to_owned(), somatic_positions: self.somatic_positions.to_owned(), somatic_aa_change: self.somatic_aa_change.to_owned(), germline_positions: self.germline_positions.to_owned(), germline_aa_change: self.germline_aa_change.to_owned()}
     }
 
 }
@@ -198,7 +204,7 @@ impl ObservationMatrix {
         self.variants.drain(..k);
         debug!("drained!");
         let mask = 2u64.pow(self.ncols()) - 1;
-        for obs in self.observations.values_mut().flatten() {
+        for obs in Itertools::flatten(self.observations.values_mut()) {
             obs.haplotype = obs.haplotype & mask;
         }
     }
@@ -211,11 +217,11 @@ impl ObservationMatrix {
         debug!("Extend variants!");
         debug!("New variants {}", k);
         if k > 0 {
-            for obs in self.observations.values_mut().flatten() {
+            for obs in Itertools::flatten(self.observations.values_mut()) {
                 obs.haplotype <<= k;
             }
         }
-        for obs in self.observations.values_mut().flatten() {
+        for obs in Itertools::flatten(self.observations.values_mut()) {
             for (i, variant) in new_variants.iter().rev().enumerate() {
                 obs.update_haplotype(i, variant)?;
             }
@@ -309,7 +315,7 @@ impl ObservationMatrix {
         };
         // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
-        for obs in self.observations.values().flatten() {
+        for obs in Itertools::flatten(self.observations.values()) {
             debug!("obs {:?}",obs);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
@@ -344,6 +350,9 @@ impl ObservationMatrix {
             let mut i = offset;
             let mut j = 0;
             let mut window_end = offset + window_len;
+            // Profile for all variants: 0 - reference, 1 - germline, 2 - somatic
+            let mut variant_profile = Vec::new();
+            //let mut somatic_profile = Vec::new();
             if variants.is_empty() {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
@@ -355,6 +364,11 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
+                        if freq == 1.0 && !(variants[j].is_germline()) {
+                            j += 1;
+                            variant_profile.push(0);
+                            continue;
+                        }
                         if bitvector_is_set(haplotype, j) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j+1].pos() { 
@@ -383,11 +397,17 @@ impl ObservationMatrix {
                             // counting somatic variants
                             if !variants[j].is_germline() {
                                 n_somatic += 1;
+                                variant_profile.push(2);
+                            }
+                            else {
+                                variant_profile.push(1);
                             }
                             // counting total number of variants
                             n_variants += 1;
+                            
                             j += 1;
                         } else {
+                            variant_profile.push(0);
                             j += 1;
                         }
                     }
@@ -409,22 +429,57 @@ impl ObservationMatrix {
             let mut n_som_variantsites = 0;
             let mut c = 0;
             // protein changes
-            let mut p_changes = String::new();
+            let mut somatic_p_changes_vec = Vec::new();
+            let mut germline_p_changes_vec = Vec::new();
             // position of the variant
-            let mut var_pos = String::new();
+            let mut somatic_var_pos_vec = Vec::new();
+            let mut germline_var_pos_vec = Vec::new();
             // gather information iterating over the variants
+            debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
                 if c == 0 {
-                    var_pos = format!("{}",variants[0].pos());
-                    p_changes = variants[0].prot_change();
+                    if c < variant_profile.len() as u32 {
+                        match variant_profile[0] {
+                            // somatic
+                            2 => {
+                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
+                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
+                            },
+                            // germline
+                            1 => {
+                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
+                                germline_p_changes_vec.push(variants[c as usize].prot_change());
+                            },
+                            // not present in this haplotype
+                            _ => {}
+                        }
+                    }
+//                    var_pos = format!("{}",variants[0].pos());
+//                    p_changes = variants[0].prot_change();
                     n_variantsites += 1;
                     if !(variants[0].is_germline()) {
                         n_som_variantsites += 1;
                     }
                 }
                 else {
-                    var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
-                    p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
+                    if c < variant_profile.len() as u32 {
+                        match variant_profile[c as usize] {
+                            // somatic
+                            2 => {
+                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
+                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
+                            },
+                            // germline
+                            1 => {
+                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
+                                germline_p_changes_vec.push(variants[c as usize].prot_change());
+                            },
+                            // not present in this haplotype
+                            _ => {}
+                        }
+                    }
+//                    var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
+//                    p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
                     if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                         n_variantsites += 1;
                         if !(variants[c as usize].is_germline()) {
@@ -434,8 +489,14 @@ impl ObservationMatrix {
                 }
                 c += 1
             }
+
+            let mut somatic_var_pos = somatic_var_pos_vec.join("|");
+            let mut somatic_p_changes = somatic_p_changes_vec.join("|");
+            let mut germline_var_pos = germline_var_pos_vec.join("|");
+            let mut germline_p_changes = germline_p_changes_vec.join("|");
+
             // build the info record
-            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()};
+            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()};
             
             // make haplotype record to carry over to next exon
             let rest = exon_end - window_end;
@@ -443,20 +504,20 @@ impl ObservationMatrix {
             let start = offset - exon_start;
             debug!("Start: {}", start);
 
-            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
             // if there are split-codon bases left at the end of the exon, add them to the sequence
             if rest < 3 {
                 let mut newseq = Vec::new();
                 newseq.extend(&seq[3 as usize..window_len as usize]);
                 newseq.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
             }
             // if there are split-codon bases at the start of an exon, add them to the sequence
             if start < 3 {
                 let mut newseq = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
                 debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
                 newseq.extend(&seq[..(window_len - 3) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), positions: var_pos.to_owned(), aa_change: p_changes.to_owned()}};
+                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
             }
 
             haplotypes_vec.push(hap_seq);
@@ -571,7 +632,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 }
                 debug!("Offset {}, old offset {}", offset, old_offset);
                 // advance window to next position
-                let nvars = variant_tree.range(offset..(offset + window_len)).map(|var| var.1).flatten().count();
+                let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
                 // store number of variants in window in case it is the last window for this exon
                 last_window_vars = nvars;
                 debug!("Variants in window: {}",nvars);
@@ -581,10 +642,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
                 } else if offset > old_offset {
-                    variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1).flatten().count()
+                    Itertools::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
                 // reverse orientation
                 } else {
-                    variant_tree.range(offset..old_offset).map(|var| var.1).flatten().count()
+                    Itertools::flatten(variant_tree.range(offset..old_offset).map(|var| var.1)).count()
                 };
 
                 // first window in the exon, no variants are deleted
@@ -593,10 +654,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
                 } else if offset > old_offset {
-                    variant_tree.range(old_offset..offset).map(|var| var.1).flatten().count()
+                    Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
                 // reverse orientation
                 } else {
-                    variant_tree.range((offset + window_len)..(old_offset + window_len)).map(|var| var.1).flatten().count()
+                    Itertools::flatten(variant_tree.range((offset + window_len)..(old_offset + window_len)).map(|var| var.1)).count()
                 };
 
 
@@ -604,21 +665,21 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 let mut reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.end - window_len - current_exon_offset {
-                        read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
+                        Itertools::flatten(read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1)).collect_vec()
                     }
                     // while advancing the window (reverse orientation), we only add reads that end in the range between old and new window end, so we don't count any read twice 
                     else {
-                        read_tree.range((offset - (max_read_len - window_len))..(offset - (max_read_len - window_len) + 1)).map(|rec| rec.1).flatten().collect_vec()
+                        Itertools::flatten(read_tree.range((offset - (max_read_len - window_len))..(offset - (max_read_len - window_len) + 1)).map(|rec| rec.1)).collect_vec()
                     }
                 }
                 else {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.start + current_exon_offset {
-                        read_tree.range((offset-(max_read_len - window_len))..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
+                        Itertools::flatten(read_tree.range((offset-(max_read_len - window_len))..(offset+1)).map(|rec| rec.1)).collect_vec()
                     }
                     // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                     else {
-                        read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1).flatten().collect_vec()
+                        Itertools::flatten(read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1)).collect_vec()
                     }
                 };
 
@@ -655,10 +716,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // collect variants
                     let variants = match transcript.strand {
-                        PhasingStrand::Reverse => variant_tree.range_mut(offset..(offset + window_len)).rev()
-                        .map(|var| var.1.clone()).flatten().skip(nvars - added_vars).collect_vec(),
-                        PhasingStrand::Forward => variant_tree.range_mut(offset..(offset + window_len)
-                        ).map(|var| var.1.clone()).flatten().skip(nvars - added_vars).collect_vec()
+                        PhasingStrand::Reverse => Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)).rev()
+                        .map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec(),
+                        PhasingStrand::Forward => Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)
+                        ).map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec()
                     };
                     debug!("Variants(after deleting and adding): {}", variants.len());
                     // determine frameshifts
