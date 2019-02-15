@@ -1,0 +1,20 @@
+name: filter
+authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
+about: Filter neopeptides that are present in the normal proteome
+
+global_settings:
+  - ColoredHelp
+
+args:
+  - verbose:
+      long: verbose
+      short: v
+      help: Verbose output.
+  - neopeptides:
+      long: neopeptides
+      short: n
+      help: fasta file containing tumor neopeptides
+  - reference:
+      long: reference
+      short: r
+      help: fasta file containing normal reference peptides
