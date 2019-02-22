@@ -1,9 +1,7 @@
 use std::error::Error;
 use std::collections::{VecDeque, BTreeMap};
 use std::io;
-use std::fs;
 
-use csv;
 use sha1;
 
 use itertools::Itertools;
@@ -323,16 +321,16 @@ impl ObservationMatrix {
             let mut i = offset;
             let mut j = 0;
             let mut window_end = offset + window_len;
-            println!("window end: {}", window_end);
+            debug!("window end: {}", window_end);
             // Profile for all variants: 0 - reference, 1 - germline, 2 - somatic
             let mut variant_profile = Vec::new();
             if variants.is_empty() {
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
             } else {
                 while i < window_end {
-                    println!("window_end: {}", window_end);
-                    println!("i: {}", i);
-                    println!("j: {}", j);
+                    debug!("window_end: {}", window_end);
+                    debug!("i: {}", i);
+                    debug!("j: {}", j);
                     // TODO what happens if a deletion starts upstream of window and overlaps it
 
                     while j < variants.len() && i == variants[j].pos() {
@@ -393,7 +391,7 @@ impl ObservationMatrix {
 
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
-            let mut id = format!("{:?}{}{}", &seq, transcript.id, offset);
+            let id = format!("{:?}{}{}", &seq, transcript.id, offset);
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // gathering meta information on haplotype
@@ -458,17 +456,22 @@ impl ObservationMatrix {
                 c += 1
             }
 
-            let mut somatic_var_pos = somatic_var_pos_vec.join("|");
-            let mut somatic_p_changes = somatic_p_changes_vec.join("|");
-            let mut germline_var_pos = germline_var_pos_vec.join("|");
-            let mut germline_p_changes = germline_p_changes_vec.join("|");
+            let somatic_var_pos = somatic_var_pos_vec.join("|");
+            let somatic_p_changes = somatic_p_changes_vec.join("|");
+            let germline_var_pos = germline_var_pos_vec.join("|");
+            let germline_p_changes = germline_p_changes_vec.join("|");
 
             // build the info record
-            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()};
+            let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(),
+                gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(),
+                chrom: gene.chrom.to_owned(), offset, freq, nvar: n_variants, nsomatic: n_somatic,
+                nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32,
+                strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
+                germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()};
             
             // make haplotype record to carry over to next exon
             println!("exon end: {}, window end {}", exon_end, window_end);
-            let rest = match (window_end > exon_end) {
+            let rest = match window_end > exon_end {
                 true => 0,
                 false => exon_end - window_end
             };
@@ -476,21 +479,33 @@ impl ObservationMatrix {
             let start = offset - exon_start;
             debug!("Start: {}", start);
 
-            let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
-            // if there are split-codon bases left at the end of the exon, add them to the sequence
-            if rest < 3 {
-                let mut newseq = Vec::new();
-                newseq.extend(&seq[3 as usize..window_len as usize]);
-                newseq.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
-            }
-            // if there are split-codon bases at the start of an exon, add them to the sequence
-            if start < 3 {
-                let mut newseq = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
-                debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
-                newseq.extend(&seq[..(window_len - 3) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(), offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(), germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
-            }
+            let newseq = match rest < 3 {
+                // if there are split-codon bases left at the end of the exon, add them to the sequence
+                true => {
+                    let mut s = Vec::new();
+                    s.extend(&seq[3 as usize..window_len as usize]);
+                    s.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
+                    s
+                }
+                false => match start < 3 {
+                     // if there are split-codon bases at the start of an exon, add them to the sequence
+                    true => {
+                        let mut s = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
+                        s.extend(&seq[..(window_len - 3) as usize]);
+                        s
+                    }
+                    false => Vec::new()
+                }
+            };
+
+            let hap_seq = HaplotypeSeq {sequence: newseq,
+                record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(),
+                    gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
+                    offset, freq, nvar: n_variants, nsomatic: n_somatic,
+                    nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32,
+                    strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
+                    germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};
+
             haplotypes_vec.push(hap_seq);
             // print haplotypes
             fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
@@ -581,7 +596,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 last_window_vars = nvars;
                 debug!("Variants in window: {}",nvars);
                 // first window in the exon, all variants found are newly added
-                let mut added_vars = if offset == old_offset {
+                let added_vars = if offset == old_offset {
                     nvars
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
@@ -593,7 +608,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 };
 
                 // first window in the exon, no variants are deleted
-                let mut deleted_vars = if offset == old_offset {
+                let deleted_vars = if offset == old_offset {
                     0
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
@@ -606,7 +621,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
 
                 debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
-                let mut reads = if transcript.strand == PhasingStrand::Reverse {
+                let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.end - window_len - current_exon_offset {
                         Itertools::flatten(read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1)).collect_vec()

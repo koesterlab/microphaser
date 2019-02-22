@@ -1,24 +1,12 @@
 use std::error::Error;
-use std::collections::{VecDeque, BTreeMap};
 use std::io;
-use std::fs;
 
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-
-use csv;
-use sha1;
-
-use itertools::Itertools;
-
-use vec_map::VecMap;
+use std::collections::{HashMap, HashSet};
 
 use bio::io::fasta;
 
 use bio::alphabets;
 
-use alphabets::Alphabet;
 use alphabets::dna;
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
@@ -65,7 +53,7 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
 fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
     let mut r = s.to_vec();
     if frame < 0 {
-        r = dna::revcomp(&s.as_bytes().to_vec());
+        r = dna::revcomp(&s.to_vec());
         frame = frame * (-1)
     }
     let mut p = vec![];
@@ -80,41 +68,44 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
     Ok(p)
 }
 
-pub fn filter<F: io::Read + io::Seek, O: io::Write>(
-    normal_reader: &mut fasta::Reader<F>,
-    tumor_reader: &mut fasta::Reader<F>,
-    prot_writer: &mut fasta::Writer<O>
+pub fn filter<F: io::Read, O: io::Write>(
+    normal_reader: fasta::Reader<F>,
+    tumor_reader: fasta::Reader<F>,
+    fasta_writer: &mut fasta::Writer<O>
 ) -> Result<(), Box<Error>> {
     // build hashSet from reference
     let mut ref_set = HashSet::new();
-    for record in normal_reader.records {
-        let id = record.id;
-        let seq = record.seq;
+    for record in (normal_reader).records() {
+        let record = record?;
+        let id = record.id();
+        let seq = record.seq();
         // check if peptide is in forward or reverse orientation
         let frame = match id.ends_with("F") {
             true => 1,
             false => -1
         };
 
-        let pepseq = to_protein(seq, frame)
-        ref_set.insert(pepseq)
+        let pepseq = to_protein(seq, frame).unwrap();
+        ref_set.insert(pepseq);
 
     }
 
-    for record in tumor_reader.records {
-        let id = record.id;
-        let seq = record.seq;
+    for record in (tumor_reader).records() {
+        let record = record?;
+        let id = record.id();
+        let seq = record.seq();
          // check if peptide is in forward or reverse orientation
         let frame = match id.ends_with("F") {
             true => 1,
             false => -1
         };
 
-        let neopeptide = to_protein(seq, frame);
+        let neopeptide = to_protein(seq, frame).unwrap();
 
-        match ref_set.contains(neopeptide) {
+        match ref_set.contains(&neopeptide) {
             true => (),
-            false => prot_writer.write(&format!("{}", record.id), None, &neopeptide)?
+            false => fasta_writer.write(&format!("{}", id), None, &neopeptide)?
         }
     }
+    Ok(())
 }

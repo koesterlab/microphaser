@@ -111,24 +111,67 @@ impl IDRecord{
         let id = format!("{:?}{}{}", &seq, &self.transcript, offset);
         shaid.update(id.as_bytes());
         let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], self.strand.chars().next().unwrap());
-        let mut somatic_positions = self.somatic_positions.clone();
-        somatic_positions.push_str(&rec.somatic_positions);
-        let mut somatic_aa_change = self.somatic_aa_change.clone();
-        somatic_aa_change.push_str(&rec.somatic_aa_change);
-        let mut germline_positions = self.germline_positions.clone();
-        germline_positions.push_str(&rec.germline_positions);
-        let mut germline_aa_change = self.germline_aa_change.clone();
-        germline_aa_change.push_str(&rec.germline_aa_change);
+
+        let somatic_positions = self.somatic_positions.split("|");
+        let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split("|").collect();
+        let germline_positions = self.germline_positions.split("|");
+        let germline_aa_change: Vec<&str> = self.germline_aa_change.split("|").collect();
+
+        let mut s_p_vec = Vec::new();
+        let mut g_p_vec = Vec::new();
+        let mut s_aa_vec = Vec::new();
+        let mut g_aa_vec = Vec::new();
+
+        let mut nvariants = 0;
+        let mut nsomatic = 0;
+
+        let mut c = 0;
+        for p in somatic_positions {
+            if self.offset + offset <= p.parse::<u32>().unwrap() {
+                s_p_vec.push(p.to_string());
+                s_aa_vec.push(somatic_aa_change[c]);
+                nsomatic += 1;
+            }
+            c += 1;
+        }
+        c = 0;
+        for p in rec.somatic_positions.split("|") {
+            if &rec.offset + offset <= p.parse::<u32>().unwrap() {
+                s_p_vec.push(p.to_string());
+                s_aa_vec.push(somatic_aa_change[c]);
+                nsomatic += 1;
+            }
+            c += 1
+        }
+        c = 0;
+        for p in germline_positions {
+            if self.offset + offset <= p.parse::<u32>().unwrap() {
+                g_p_vec.push(p.to_string());
+                g_aa_vec.push(germline_aa_change[c]);
+                nvariants += 1;
+            }
+            c += 1;
+        }
+        c = 0;
+        for p in rec.germline_positions.split("|") {
+            if &rec.offset + offset <= p.parse::<u32>().unwrap() {
+                g_p_vec.push(p.to_string());
+                g_aa_vec.push(germline_aa_change[c]);
+                nvariants += 1;
+            }
+            c += 1;
+        }
+
         debug!("nvars {} {}",self.nvar,rec.nvar);
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
-            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
-            strand: self.strand.to_owned(), somatic_positions: somatic_positions, somatic_aa_change: somatic_aa_change, germline_positions: germline_positions, germline_aa_change: germline_aa_change,
+            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: nvariants, nsomatic: nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
+            strand: self.strand.to_owned(), somatic_positions: s_p_vec.join("|"), somatic_aa_change: s_aa_vec.join("|"), germline_positions: g_p_vec.join("|"), germline_aa_change: g_aa_vec.join("|"),
             normal_sequence: self.normal_sequence.to_owned(), mutant_sequence: self.mutant_sequence.to_owned()
         }
     }
 
     pub fn add_freq(&self, freq: f64) -> Self {
-        let new_nvar = match freq{
+        let new_nvar = match freq {
             f if f > 0.0 => self.nvar - 1,
             _ => self.nvar
         };
@@ -151,14 +194,6 @@ pub struct HaplotypeSeq {
     sequence: Vec<u8>,
     record: IDRecord
 }
-
-//impl HaplotypeSeq {
-//    pub fn new() ->
-//    pub fn sequence(&self) -> Vec<u8> {
-//        &self.sequence
-//    }
-//}
-
 
 
 #[derive(Debug)]
@@ -308,7 +343,7 @@ impl ObservationMatrix {
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
-        prot_writer: &mut fasta::Writer<fs::File>,
+        normal_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
     ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
 
@@ -349,9 +384,6 @@ impl ObservationMatrix {
             // build haplotype sequence
             seq.clear();
             germline_seq.clear();
-//            for v in &variants {
-//                debug!("Variant 0 {}", variants[0].pos());
-//                debug!("Variant_pos {}", v.pos())}
             let mut n_somatic = 0;
             let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
@@ -383,8 +415,6 @@ impl ObservationMatrix {
                             if (j + 1) < variants.len() && i == variants[j+1].pos() {
                                 j += 1;
                             }
-                            let mut n_variantsites = 0;
-                            let mut n_som_variantsites = 0;
                             match variants[j] {
                                 // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
                                 &Variant::SNV { alt, .. } => {
@@ -434,20 +464,23 @@ impl ObservationMatrix {
                     i += 1
                 }
             }
-
-
+            // for indels, do not use the corresponding normal, but search for one with small hamming distance
+            if indel {
+                germline_seq.clear();
+            }
+            // no somatic variant, no neopeptide
             if n_somatic == 0 {
                 continue;
             }
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
-            let mut id = format!("{:?}{}{}", &seq, transcript.id, offset);
+            let id = format!("{:?}{}{}", &seq, transcript.id, offset);
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
-            // normal sequence of neo-haplotype
+            // normal sequence of haplotype
             let normal_peptide = format!("{:?}", &germline_seq);
+            // neopeptide sequence
             let neopeptide = format!("{:?}", &seq);
-            normal_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
             let mut n_som_variantsites = 0;
@@ -514,10 +547,10 @@ impl ObservationMatrix {
                 c += 1
             }
 
-            let mut somatic_var_pos = somatic_var_pos_vec.join("|");
-            let mut somatic_p_changes = somatic_p_changes_vec.join("|");
-            let mut germline_var_pos = germline_var_pos_vec.join("|");
-            let mut germline_p_changes = germline_p_changes_vec.join("|");
+            let somatic_var_pos = somatic_var_pos_vec.join("|");
+            let somatic_p_changes = somatic_p_changes_vec.join("|");
+            let germline_var_pos = germline_var_pos_vec.join("|");
+            let germline_p_changes = germline_p_changes_vec.join("|");
 
             // build the info record
             let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
@@ -529,7 +562,7 @@ impl ObservationMatrix {
                 normal_sequence: normal_peptide.to_owned(), mutant_sequence: neopeptide.to_owned()};
             
             // make haplotype record to carry over to next exon
-            let rest = match (window_end > exon_end) {
+            let rest = match window_end > exon_end {
                 true => 0,
                 false => exon_end - window_end,
             };
@@ -578,8 +611,8 @@ impl ObservationMatrix {
             // write neopeptides, information and matching normal peptide to files
             if record.nsomatic > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
-                tsv_writer.serialize(record)?;
                 normal_writer.write(&format!("{}", record.id), None, &germline_seq[..window_len as usize])?;
+                tsv_writer.serialize(record)?;
             }
         }
         Ok(haplotypes_vec)
@@ -594,7 +627,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     variant_buffer: &mut bcf::buffer::RecordBuffer,
     fasta_writer: &mut fasta::Writer<O>,
     tsv_writer: &mut csv::Writer<fs::File>,
-    prot_writer: &mut fasta::Writer<fs::File>,
+    normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     refseq: &mut Vec<u8>,
     only_relevant: bool
@@ -669,7 +702,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 last_window_vars = nvars;
                 debug!("Variants in window: {}",nvars);
                 // first window in the exon, all variants found are newly added
-                let mut added_vars = if offset == old_offset {
+                let added_vars = if offset == old_offset {
                     nvars
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
@@ -681,7 +714,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 };
 
                 // first window in the exon, no variants are deleted
-                let mut deleted_vars = if offset == old_offset {
+                let deleted_vars = if offset == old_offset {
                     0
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
@@ -694,7 +727,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
 
                 debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
-                let mut reads = if transcript.strand == PhasingStrand::Reverse {
+                let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.end - window_len - current_exon_offset {
                         Itertools::flatten(read_tree.range((offset - (max_read_len - window_len))..(offset+1)).map(|rec| rec.1)).collect_vec()
@@ -792,11 +825,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             debug!("Exon Rest {}", exon_rest);
                             if exon_rest < 3 {
                                 prev_hap_vec = observations.print_haplotypes(
-                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
                             ).unwrap(); }
                             else {
                                 hap_vec = observations.print_haplotypes(
-                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
+                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
                             ).unwrap(); }
                         }
                     }
@@ -906,7 +939,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     bam_reader: bam::IndexedReader,
     fasta_writer: &mut fasta::Writer<O>,
     tsv_writer: &mut csv::Writer<fs::File>,
-    prot_writer: &mut fasta::Writer<fs::File>,
+    normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     only_relevant: bool
 ) -> Result<(), Box<Error>> {
@@ -923,7 +956,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             if gene.biotype == "protein_coding" {
                 phase_gene(
                     &gene, fasta_reader, &mut read_buffer,
-                    &mut variant_buffer, fasta_writer, tsv_writer, prot_writer,
+                    &mut variant_buffer, fasta_writer, tsv_writer, normal_writer,
                     window_len,
                     &mut refseq,
                     only_relevant

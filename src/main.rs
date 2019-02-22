@@ -19,7 +19,7 @@ use std::io;
 
 
 
-use clap::{Arg, ArgMatches, App, SubCommand};
+use clap::{ArgMatches, App, SubCommand};
 
 use rust_htslib::{bam, bcf};
 use bio::io::{fasta, gff};
@@ -140,13 +140,13 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
                    .chain(std::io::stderr())
                    .apply().unwrap();
 
-    let mut normal_reader = fasta::Reader::from_file(&matches.value_of("normal").unwrap())?;
+    let normal_reader = fasta::Reader::from_file(&matches.value_of("normal").unwrap())?;
 
-    let mut tumor_reader = fasta::Reader::from_file(&matches.value_of("tumor").unwrap())?;
+    let tumor_reader = fasta::Reader::from_file(&matches.value_of("tumor").unwrap())?;
 
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
-    filter::filter(&mut normal_reader. &mut tumor_reader, &mut fasta_writer)
+    filter::filter(normal_reader, tumor_reader, &mut fasta_writer)
 }
 
 pub fn main() {
