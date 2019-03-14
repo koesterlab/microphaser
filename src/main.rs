@@ -33,7 +33,6 @@ pub mod filter;
 
 
 pub fn run() -> Result<(), Box<Error>> {
-    println!("Starting");
     let yaml = load_yaml!("cli.yaml");
     let somatic_yaml = load_yaml!("somatic_cli.yaml");
     let germline_yaml = load_yaml!("germline_cli.yaml");
@@ -82,19 +81,18 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
 
     let only_relevant = matches.is_present("relevant");
 
-    let mut prot_writer = fasta::Writer::to_file(matches.value_of("proteome").unwrap())?;
+    let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
 
     let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
         &mut fasta_reader, &mut gtf_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, &mut tsv_writer, &mut prot_writer, window_len, only_relevant
+        bam_reader, &mut fasta_writer, &mut tsv_writer, &mut normal_writer, window_len, only_relevant
     )
 }
 
 pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
-    println!("Normal Mode");
     fern::Dispatch::new()
                    .format(|out, message, _| out.finish(format_args!("{}", message)))
                    .level(
@@ -140,13 +138,19 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
                    .chain(std::io::stderr())
                    .apply().unwrap();
 
-    let normal_reader = fasta::Reader::from_file(&matches.value_of("normal").unwrap())?;
+    let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
+//    let tumor_reader = fasta::Reader::from_file(&matches.value_of("neopeptides").unwrap())?;
+//    let normal_reader = fasta::Reader::from_file(&matches.value_of("normalpeptides").unwrap())?;
+    let mut tsv_reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(&matches.value_of("tsv").unwrap())?;
 
-    let tumor_reader = fasta::Reader::from_file(&matches.value_of("tumor").unwrap())?;
-
+    let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsvoutput").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
+    let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
-    filter::filter(normal_reader, tumor_reader, &mut fasta_writer)
+//    filter::filter(reference_reader, tumor_reader,  normal_reader, &mut tsv_reader, &mut fasta_writer,
+//         &mut normal_writer, &mut tsv_writer)
+    filter::filter(reference_reader, &mut tsv_reader, &mut fasta_writer,
+         &mut normal_writer, &mut tsv_writer)
 }
 
 pub fn main() {

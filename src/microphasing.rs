@@ -28,7 +28,8 @@ pub fn switch_ascii_case(c: u8, r: u8) -> u8 {
     if r.is_ascii_uppercase() {
         c.to_ascii_lowercase()}
     else {
-        c}
+        c
+    }
 }
 
 pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
@@ -126,25 +127,40 @@ impl IDRecord{
         let mut nsomatic = 0;
 
         let mut c = 0;
+
         for p in somatic_positions {
+            if p == "" {
+                break;
+            }
             if self.offset + offset <= p.parse::<u32>().unwrap() {
                 s_p_vec.push(p.to_string());
                 s_aa_vec.push(somatic_aa_change[c]);
                 nsomatic += 1;
+                nvariants += 1;
             }
             c += 1;
         }
         c = 0;
         for p in rec.somatic_positions.split("|") {
-            if &rec.offset + offset <= p.parse::<u32>().unwrap() {
+            debug!("{}",p);
+            if p == "" {
+                break;
+            }
+            if rec.offset >= p.parse::<u32>().unwrap() - offset {
+                debug!("hey");
                 s_p_vec.push(p.to_string());
                 s_aa_vec.push(somatic_aa_change[c]);
                 nsomatic += 1;
+                nvariants += 1;
+                debug!("{}",nsomatic);
             }
             c += 1
         }
         c = 0;
         for p in germline_positions {
+            if p == "" {
+                break;
+            }
             if self.offset + offset <= p.parse::<u32>().unwrap() {
                 g_p_vec.push(p.to_string());
                 g_aa_vec.push(germline_aa_change[c]);
@@ -154,7 +170,10 @@ impl IDRecord{
         }
         c = 0;
         for p in rec.germline_positions.split("|") {
-            if &rec.offset + offset <= p.parse::<u32>().unwrap() {
+            if p == "" {
+                break;
+            }
+            if rec.offset >= p.parse::<u32>().unwrap() - offset {
                 g_p_vec.push(p.to_string());
                 g_aa_vec.push(germline_aa_change[c]);
                 nvariants += 1;
@@ -171,9 +190,12 @@ impl IDRecord{
     }
 
     pub fn add_freq(&self, freq: f64) -> Self {
-        let new_nvar = match freq {
-            f if f > 0.0 => self.nvar - 1,
-            _ => self.nvar
+        let new_nvar = match self.nvar == 0 {
+            true => self.nvar,
+            false => match freq {
+                f if f > 0.0 => self.nvar - 1,
+                _ => self.nvar
+            }
         };
         let new_somatic = match new_nvar < self.nsomatic {
             true => self.nsomatic - 1,
@@ -394,8 +416,9 @@ impl ObservationMatrix {
             let mut variant_profile = Vec::new();
             //let mut somatic_profile = Vec::new();
             if variants.is_empty() {
+                germline_seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
                 seq.extend(&refseq[(offset - gene.start()) as usize..(offset + window_len - gene.start()) as usize]);
-                continue;
+                //continue;
             } else {
                 while i < window_end {
                     debug!("window_end: {}", window_end);
@@ -405,11 +428,11 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
-                        if freq == 1.0 && !(variants[j].is_germline()) {
-                            j += 1;
-                            variant_profile.push(0);
-                            continue;
-                        }
+//                        if freq == 1.0 && !(variants[j].is_germline()) {
+//                            j += 1;
+//                            variant_profile.push(0);
+//                            continue;
+//                        }
                         if bitvector_is_set(haplotype, j) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j+1].pos() {
@@ -427,15 +450,23 @@ impl ObservationMatrix {
                                 },
                                 // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
                                 &Variant::Insertion { seq: ref s, .. } => {
+                                    match variants[j].is_germline() {
+                                        true => germline_seq.extend(switch_ascii_case_vec(s, refseq[(i - gene.start()) as usize]).into_iter()),
+                                        false => indel = true
+                                    }
                                     seq.extend(switch_ascii_case_vec(s, refseq[(i - gene.start()) as usize]).into_iter());
-                                    indel = true;
+                                    //indel = true;
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
+                                    match variants[j].is_germline() {
+                                        true => germline_seq.push(refseq[(i - gene.start()) as usize]),
+                                        false => indel = true
+                                    }
                                     seq.push(refseq[(i - gene.start()) as usize]);
-                                    indel = true;
+                                    //indel = true;
                                     i += len + 1;
                                     window_end += len + 1;
                                 }
@@ -468,19 +499,19 @@ impl ObservationMatrix {
             if indel {
                 germline_seq.clear();
             }
-            // no somatic variant, no neopeptide
-            if n_somatic == 0 {
-                continue;
-            }
+//            // no somatic variant, no neopeptide
+//            if n_somatic == 0 {
+//                continue;
+//            }
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}{}", &seq, transcript.id, offset);
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // normal sequence of haplotype
-            let normal_peptide = format!("{:?}", &germline_seq);
+            let normal_peptide = String::from_utf8_lossy(&germline_seq);
             // neopeptide sequence
-            let neopeptide = format!("{:?}", &seq);
+            let neopeptide = String::from_utf8_lossy(&seq);
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
             let mut n_som_variantsites = 0;
@@ -559,7 +590,7 @@ impl ObservationMatrix {
                 nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
                 somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
-                normal_sequence: normal_peptide.to_owned(), mutant_sequence: neopeptide.to_owned()};
+                normal_sequence: normal_peptide.to_owned().to_string(), mutant_sequence: neopeptide.to_owned().to_string()};
             
             // make haplotype record to carry over to next exon
             let rest = match window_end > exon_end {
@@ -576,32 +607,42 @@ impl ObservationMatrix {
                 nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
                 somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
-                normal_sequence: normal_peptide.to_owned(), mutant_sequence: neopeptide.to_owned()}};
+                normal_sequence: normal_peptide.to_owned().to_string(), mutant_sequence: neopeptide.to_owned().to_string()}};
             // if there are split-codon bases left at the end of the exon, add them to the sequence
             if rest < 3 {
                 let mut newseq = Vec::new();
                 newseq.extend(&seq[3 as usize..window_len as usize]);
                 newseq.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
+                let mut new_normal = Vec::new();
+                if normal_peptide.len() > 0 {
+                    new_normal.extend(&germline_seq[3 as usize..window_len as usize]);
+                    new_normal.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize])
+                }
+                hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
                     gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
                     offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
                     nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
                     somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
-                    normal_sequence: normal_peptide.to_owned(), mutant_sequence: neopeptide.to_owned()}};
+                    normal_sequence: String::from_utf8_lossy(&new_normal).to_string(), mutant_sequence: String::from_utf8_lossy(&newseq).to_string()}};
             }
             // if there are split-codon bases at the start of an exon, add them to the sequence
             if start < 3 {
                 let mut newseq = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
-                debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
                 newseq.extend(&seq[..(window_len - 3) as usize]);
-                hap_seq = HaplotypeSeq {sequence: newseq, record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(),
+                let mut new_normal = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
+                match normal_peptide.len() > 0 {
+                    true => new_normal.extend(&germline_seq[..(window_len - 3) as usize]),
+                    false => new_normal.clear()
+                }
+                debug!("Starting_sequence: {:?}", String::from_utf8_lossy(&seq));
+                hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(),
                     chrom: gene.chrom.to_owned(), offset: offset,
                     freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
                     nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
                     somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
-                    normal_sequence: normal_peptide.to_owned(), mutant_sequence: neopeptide.to_owned()}};
+                    normal_sequence: String::from_utf8_lossy(&new_normal).to_string(), mutant_sequence: String::from_utf8_lossy(&newseq).to_string()}};
             }
 
             haplotypes_vec.push(hap_seq);
@@ -611,10 +652,13 @@ impl ObservationMatrix {
             // write neopeptides, information and matching normal peptide to files
             if record.nsomatic > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
-                normal_writer.write(&format!("{}", record.id), None, &germline_seq[..window_len as usize])?;
-                tsv_writer.serialize(record)?;
+                if germline_seq.len() > 0 {
+                    normal_writer.write(&format!("{}", record.id), None, &germline_seq[..window_len as usize])?;
+                }
+                    tsv_writer.serialize(record)?;
             }
         }
+        debug!("{:?}", haplotypes_vec);
         Ok(haplotypes_vec)
     }
 }
@@ -842,6 +886,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
                     if at_splice_side {
+                        debug!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                                 PhasingStrand::Forward => &hap_vec,
                                 PhasingStrand::Reverse => &prev_hap_vec 
@@ -850,18 +895,24 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 PhasingStrand::Forward => &prev_hap_vec,
                                 PhasingStrand::Reverse => &hap_vec
                         };
+                        debug!("{:?}", first_hap_vec);
+                        debug!("{:?}", sec_hap_vec);
                         //close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
                         //let it = prev_hap_vec.cartesian_product(hap_vec);
                         //let mut splice_sequences = Vec::new();
-                        let mut output_map: BTreeMap<(u32, Vec<u8>), (Vec<u8>, IDRecord)> = BTreeMap::new();
+                        let mut output_map: BTreeMap<(u32, Vec<u8>, Vec<u8>), (Vec<u8>, IDRecord, Vec<u8>)> = BTreeMap::new();
 
                         // iterate over all combinations of splice side haplotypes
                         for hapseq in first_hap_vec{
-                            let sequence = &hapseq.sequence;
+                            //let sequence = &hapseq.sequence;
                             let record = &hapseq.record;
+                            let wt_sequence = &record.normal_sequence;
+                            let mt_sequence = &record.mutant_sequence;
                             for prev_hapseq in sec_hap_vec {
-                                let mut prev_sequence = prev_hapseq.sequence.clone();
+                                //let mut prev_sequence = prev_hapseq.sequence.clone();
                                 let prev_record = &prev_hapseq.record;
+                                let prev_wt_sequence = &prev_record.normal_sequence;
+                                let prev_mt_sequence = &prev_record.mutant_sequence;
 //                                match transcript.strand {
 //                                    PhasingStrand::Forward => prev_sequence.extend(sequence),
 //                                    PhasingStrand::Reverse => sequence.extend(prev_sequence)
@@ -870,45 +921,75 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 //                                    PhasingStrand::Forward => prev_sequence,
 //                                    PhasingStrand::Reverse => sequence
 //                                };
-                                // paste together a sequence spanning the splice side
-                                prev_sequence.extend(sequence);
-                                debug!("Complete Sequence : {:?}", String::from_utf8_lossy(&prev_sequence));
+                                // combine the normal sequence
+                                let new_wt = format!("{}{}", prev_wt_sequence, wt_sequence);
+                                let new_wt_sequence = new_wt.as_bytes();
+                                // combine all possibilites of mutated sequences
+                                let mut new_mt_sequences = Vec::new();
+                                if wt_sequence != mt_sequence {
+                                    new_mt_sequences.push(format!("{}{}",prev_wt_sequence, mt_sequence));
+                                    if prev_wt_sequence != prev_mt_sequence {
+                                        new_mt_sequences.push(format!("{}{}", prev_mt_sequence, wt_sequence));
+                                        new_mt_sequences.push(format!("{}{}", prev_mt_sequence, mt_sequence));
+                                    }
+                                }
+                                debug!("Complete WT Sequence : {:?}", String::from_utf8_lossy(&new_wt_sequence));
                                 // slide window over the spanning sequence
-                                let mut splice_offset = 0;
-                                while splice_offset + window_len < prev_sequence.len() as u32 {
-                                    let out_seq = &prev_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
-                                    let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
-                                    debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));
-                                    // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
-                                    let id_tuple = (splice_offset, out_seq.to_vec());
-//                                    match output_map.get_mut(&id_tuple) {
-//                                        Some(old_entry) => {
-//                                            let old_freq = old_entry.1.freq;
-//                                            *old_entry = (out_seq.to_vec(), out_record.add_freq(old_freq));
-//                                        },
-//                                        None => {
-//                                            output_map.insert(id_tuple, (out_seq.to_vec(), out_record));
-//                                        }
-//                                    }
-                                    let old_freq = match output_map.get_mut(&id_tuple) {
-                                        Some(x) => x.1.freq,
-                                        None => 0.0
-                                    };
-                                    *output_map.entry(id_tuple).or_insert((out_seq.to_vec(), out_record)) = (out_seq.to_vec(), out_record.add_freq(old_freq));
-                                    splice_offset += 3;
+                                for new_mt in new_mt_sequences {
+                                    let new_mt_sequence = new_mt.as_bytes();
+                                    debug!("Complete MT Sequence : {:?}", String::from_utf8_lossy(&new_mt_sequence));
+                                    let mut splice_offset = 0;
+                                    while splice_offset + window_len < new_wt_sequence.len() as u32 {
+                                        let out_wt_seq = &new_wt_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
+                                        let out_mt_seq = &new_mt_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
+
+                                        debug!("Out MT Sequence : {:?}", String::from_utf8_lossy(&out_mt_seq));
+                                        debug!("Out WT Sequence : {:?}", String::from_utf8_lossy(&out_wt_seq));
+                                        // non mutated sites
+                                        if out_wt_seq == out_mt_seq {
+                                            splice_offset += 3;
+                                            continue;
+                                        }
+                                        let out_record = prev_record.update(record, splice_offset + 3, out_mt_seq.to_vec());
+                                        debug!("prevRecord: {:?}",prev_record);
+                                        debug!("afterRecord: {:?}",record);
+                                        debug!("Record: {:?}",out_record);
+                                        // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
+                                        let id_tuple = (splice_offset, out_mt_seq.to_vec(), out_wt_seq.to_vec());
+                                        //                                    match output_map.get_mut(&id_tuple) {
+                                        //                                        Some(old_entry) => {
+                                        //                                            let old_freq = old_entry.1.freq;
+                                        //                                            *old_entry = (out_seq.to_vec(), out_record.add_freq(old_freq));
+                                        //                                        },
+                                        //                                        None => {
+                                        //                                            output_map.insert(id_tuple, (out_seq.to_vec(), out_record));
+                                        //                                        }
+                                        //                                    }
+                                        let old_freq = match output_map.get_mut(&id_tuple) {
+                                            Some(x) => x.1.freq,
+                                            None => 0.0
+                                        };
+                                        *output_map.entry(id_tuple)
+                                            .or_insert((out_mt_seq.to_vec(), out_record, out_wt_seq.to_vec()))
+                                            = (out_mt_seq.to_vec(), out_record.add_freq(old_freq), out_wt_seq.to_vec());
+                                        splice_offset += 3;
+                                    }
                                 }
                             }
                         }
 //                      let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
                         for (_key, val) in output_map.iter() {
                             let out_record = &val.1;
-                            let out_seq = &val.0;
-                            if !(only_relevant) && (out_record.nsomvariant_sites == 0 || (out_record.nsomatic == 0 && out_record.freq == 1.0)) {
-                                normal_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
-                            }
+                            let out_mt_seq = &val.0;
+                            let out_wt_seq = &val.2;
+                             debug!("Out Sequence 2: {:?}", String::from_utf8_lossy(&out_mt_seq));
+//                            if out_record.nsomvariant_sites > 0 && out_record.nsomatic == 0 {
+//                                normal_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+//                            }
                             // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-                            if out_record.nsomvariant_sites > 0 && (out_record.nsomatic > 0 || out_record.freq < 1.0) {
-                                fasta_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
+                            if out_record.nsomatic > 0 {
+                                fasta_writer.write(&format!("{}", out_record.id), None, &out_mt_seq[..window_len as usize])?;
+                                normal_writer.write(&format!("{}", out_record.id), None, &out_wt_seq[..window_len as usize])?;
                                 tsv_writer.serialize(out_record)?;
                             }
                         }

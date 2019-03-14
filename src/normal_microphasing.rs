@@ -341,7 +341,7 @@ impl ObservationMatrix {
                             continue;
                         }
                         if bitvector_is_set(haplotype, j) {
-                            println!("Haplotype: {} ; j: {}", haplotype, j);
+                            debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j+1].pos() { 
                                 j += 1;
                             }
@@ -470,7 +470,7 @@ impl ObservationMatrix {
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()};
             
             // make haplotype record to carry over to next exon
-            println!("exon end: {}, window end {}", exon_end, window_end);
+            debug!("exon end: {}, window end {}", exon_end, window_end);
             let rest = match window_end > exon_end {
                 true => 0,
                 false => exon_end - window_end
@@ -809,7 +809,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());
-    println!("Stared Phasing");
+    debug!("Stared Phasing");
     let mut gene = None;
     let mut phase_last_gene = | gene: Option<Gene>| -> Result<(), Box<Error>> {
         if let Some(ref gene) = gene {

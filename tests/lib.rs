@@ -20,10 +20,24 @@ fn test_output(result: &str, expected: &str) {
 }
 
 
-fn microphaser(cmd: &str) {
+fn microphaser_somatic(cmd: &str) {
     assert!(Command::new("bash")
             .arg("-c")
-            .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser {}", cmd))
+            .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser somatic {}", cmd))
+            .spawn().unwrap().wait().unwrap().success());
+}
+
+fn microphaser_normal(cmd: &str) {
+    assert!(Command::new("bash")
+            .arg("-c")
+            .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser normal {}", cmd))
+            .spawn().unwrap().wait().unwrap().success());
+}
+
+fn microphaser_filter(cmd: &str) {
+    assert!(Command::new("bash")
+            .arg("-c")
+            .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser filter {}", cmd))
             .spawn().unwrap().wait().unwrap().success());
 }
 
@@ -55,28 +69,57 @@ fn test_empty() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr14");
     println!("{}",reference);
-    microphaser(&format!("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/empty_test.vcf --tsv tests/output/empty_test.tsv --proteome tests/output/empty_test.prot.fa --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf", reference));
+    microphaser_somatic(&format!("tests/resources/test_forward/forward_test.bam \
+        --variants tests/resources/test_forward/empty_test.vcf --tsv tests/output/empty_test.tsv \
+        --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf", reference));
     test_output("tests/output/empty_test.fa", "tests/resources/test_forward/expected_output/empty_test.fa");
-    test_output("tests/output/empty_test.prot.fa", "tests/resources/test_forward/expected_output/empty_test.prot.fa");
 }
 
 #[test]
-fn test_forward() {
+fn test_filter() {
+    fs::create_dir("tests/output");
+    microphaser_filter("--reference tests/resources/test_filter/reference.fa \
+        --tsv tests/resources/test_filter/info.tsv --tsvoutput tests/output/test_filter.info.tsv \
+        --normaloutput tests/output/test_filter.normal.fa > tests/output/test_filter.tumor.fa");
+    test_output("tests/output/test_filter.tumor.fa", "tests/resources/test_filter/expected_output/tumor.filtered.fa");
+    test_output("tests/output/test_filter.normal.fa", "tests/resources/test_filter/expected_output/normal.filtered.fa");
+    test_output("tests/output/test_filter.info.tsv", "tests/resources/test_filter/expected_output/info.filtered.tsv");
+}
+
+#[test]
+fn test_forward_somatic() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr14");
-    microphaser(&format!("tests/resources/test_forward/forward_test.bam --variants tests/resources/test_forward/forward_test.vcf --tsv tests/output/forward_test.csv --proteome tests/output/forward_test.prot.fa --ref {} > tests/output/forward_test.fa < tests/resources/test_forward/forward_test.gtf", reference));
+    microphaser_somatic(&format!("tests/resources/test_forward/forward_test.bam \
+        --variants tests/resources/test_forward/forward_test.vcf \
+        --tsv tests/output/forward_test.tsv --ref {} \
+        --normaloutput tests/output/forward_test.normal.fa \
+        > tests/output/forward_test.fa < tests/resources/test_forward/forward_test.gtf", reference));
     test_output("tests/output/forward_test.fa", "tests/resources/test_forward/expected_output/forward_test.fa");
-    test_output("tests/output/forward_test.prot.fa", "tests/resources/test_forward/expected_output/forward_test.prot.fa");
-    test_output("tests/output/forward_test.csv", "tests/resources/test_forward/expected_output/forward_test.csv");
+    test_output("tests/output/forward_test.tsv", "tests/resources/test_forward/expected_output/forward_test.tsv");
+    test_output("tests/output/forward_test.normal.fa", "tests/resources/test_forward/expected_output/forward_test.normal.fa");
+}
+
+#[test]
+fn test_forward_germline() {
+    fs::create_dir("tests/output");
+    let reference = download_reference("chr14");
+    microphaser_normal(&format!("tests/resources/test_forward/forward_test.bam \
+        --variants tests/resources/test_forward/forward_test.germline.vcf \
+        --ref {} > tests/output/forward_test.germline.fa < tests/resources/test_forward/forward_test.gtf", reference));
+    test_output("tests/output/forward_test.germline.fa", "tests/resources/test_forward/expected_output/forward_test.germline.fa");
 }
 
 #[test]
 fn splice_test_forward() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr7");
-    microphaser(&format!("tests/resources/splice_forward_test/INSIG1.test.bam --variants tests/resources/splice_forward_test/INSIG1.test.vcf --tsv tests/output/splice_forward_test.tsv --proteome tests/output/splice_forward_test.prot.fa --ref {} > tests/output/splice_forward_test.fa < tests/resources/splice_forward_test/INSIG1.test.gtf", reference));
+    microphaser_somatic(&format!("tests/resources/splice_forward_test/INSIG1.test.bam \
+        --variants tests/resources/splice_forward_test/INSIG1.test.vcf \
+        --tsv tests/output/splice_forward_test.tsv --normaloutput tests/output/splice_forward_test.normal.fa --ref {} \
+        > tests/output/splice_forward_test.fa < tests/resources/splice_forward_test/INSIG1.test.gtf", reference));
     test_output("tests/output/splice_forward_test.fa", "tests/resources/splice_forward_test/expected_output/splice_forward_test.fa");
-    test_output("tests/output/splice_forward_test.prot.fa", "tests/resources/splice_forward_test/expected_output/splice_forward_test.prot.fa");
+    test_output("tests/output/splice_forward_test.normal.fa", "tests/resources/splice_forward_test/expected_output/splice_forward_test.normal.fa");
     test_output("tests/output/splice_forward_test.tsv", "tests/resources/splice_forward_test/expected_output/splice_forward_test.tsv");
 }
 
@@ -84,18 +127,34 @@ fn splice_test_forward() {
 fn test_reverse() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr1");
-    microphaser(&format!("tests/resources/test_reverse/reverse_test.bam --variants tests/resources/test_reverse/reverse_test.vcf --tsv tests/output/reverse_test.tsv --proteome tests/output/reverse_test.prot.fa --ref {} > tests/output/reverse_test.fa < tests/resources/test_reverse/reverse_test.gtf", reference));
+    microphaser_somatic(&format!("tests/resources/test_reverse/reverse_test.bam \
+        --variants tests/resources/test_reverse/reverse_test.vcf \
+        --tsv tests/output/reverse_test.tsv --normaloutput tests/output/reverse_test.normal.fa --ref {} \
+        > tests/output/reverse_test.fa < tests/resources/test_reverse/reverse_test.gtf", reference));
     test_output("tests/output/reverse_test.fa", "tests/resources/test_reverse/expected_output/reverse_test.fa");
-    test_output("tests/output/reverse_test.prot.fa", "tests/resources/test_reverse/expected_output/reverse_test.prot.fa");
+    test_output("tests/output/reverse_test.normal.fa", "tests/resources/test_reverse/expected_output/reverse_test.normal.fa");
     test_output("tests/output/reverse_test.tsv", "tests/resources/test_reverse/expected_output/reverse_test.tsv");
 }
 
 #[test]
-fn splice_test_reverse() {
+fn test_reverse_germline() {
     fs::create_dir("tests/output");
-    let reference = download_reference("chr6");
-    microphaser(&format!("tests/resources/splice_reverse_test/MMS22L.test.bam --variants tests/resources/splice_reverse_test/MMS22L.test.vcf --tsv tests/output/splice_reverse_test.tsv --proteome tests/output/splice_reverse_test.prot.fa --ref {} > tests/output/splice_reverse_test.fa < tests/resources/splice_reverse_test/MMS22L.test.gtf", reference));
-    test_output("tests/output/splice_reverse_test.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.fa");
-    test_output("tests/output/splice_reverse_test.prot.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.prot.fa");
-    test_output("tests/output/splice_reverse_test.tsv", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.tsv");
+    let reference = download_reference("chr1");
+    microphaser_normal(&format!("tests/resources/test_reverse/reverse_test.bam \
+        --variants tests/resources/test_reverse/reverse_test.germline.vcf \
+        --ref {} > tests/output/reverse_test.germline.fa < tests/resources/test_reverse/reverse_test.gtf", reference));
+    test_output("tests/output/reverse_test.germline.fa", "tests/resources/test_reverse/expected_output/reverse_test.germline.fa");
 }
+
+//#[test]
+//fn splice_test_reverse() {
+//    fs::create_dir("tests/output");
+//    let reference = download_reference("chr6");
+//    microphaser_somatic(&format!("tests/resources/splice_reverse_test/MMS22L.test.bam \
+//        --variants tests/resources/splice_reverse_test/MMS22L.test.vcf --tsv tests/output/splice_reverse_test.tsv \
+//        --normaloutput tests/output/splice_reverse_test.prot.fa --ref {} \
+//        > tests/output/splice_reverse_test.fa < tests/resources/splice_reverse_test/MMS22L.test.gtf", reference));
+//    test_output("tests/output/splice_reverse_test.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.fa");
+//    test_output("tests/output/splice_reverse_test.normal.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.normal.fa");
+//    test_output("tests/output/splice_reverse_test.tsv", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.tsv");
+//}

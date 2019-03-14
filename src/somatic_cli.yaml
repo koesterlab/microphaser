@@ -33,15 +33,15 @@ args:
   - tsv:
       long: tsv
       short: t
-      default_value: "out.tsv"
+      default_value: "info.tsv"
       help: TSV output for further information on haplotype IDs
   - relevant:
       long: only-relevant
       short: or
       help: Output only relevant haplotypes (spanning over variant positions)
-  - proteome:
-      long: proteome
-      short: p
+  - normal:
+      long: normaloutput
+      short: n
       value_name: FILE
-      default_value: "proteome.fasta"
-      help: Output wildtype haplotypes to proteome file
+      default_value: "normal.fasta"
+      help: Output wildtype haplotypes of mutated sequences.

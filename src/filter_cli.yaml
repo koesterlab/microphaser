@@ -10,11 +10,33 @@ args:
       long: verbose
       short: v
       help: Verbose output.
-  - neopeptides:
-      long: neopeptides
-      short: n
-      help: fasta file containing tumor neopeptides
+#  - neopeptides:
+#      long: neopeptides
+#      short: p
+#      help: fasta file containing tumor neopeptides
+  - tsv:
+      long: tsv
+      short: t
+      value_name: FILE
+      required: true
+      help: info.tsv of the tumor neopeptides
+#  - normalpeptides:
+#      long: normalpeptides
+#      short: n
+#      help: fasta file containing unmutated peptides of the tumor neopeptides
   - reference:
       long: reference
       short: r
+      value_name: FILE
+      required: true
       help: fasta file containing normal reference peptides
+  - tsvoutput:
+      long: tsvoutput
+      short: o
+      default_value: "info.filtered.tsv"
+      help: filtered info.tsv
+  - normaloutput:
+      long: normaloutput
+      short: n
+      default_value: "normal.filtered.fa"
+      help: filtered unmutated peptides
