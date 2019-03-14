@@ -761,7 +761,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 debug!("Complete Sequence : {:?}", String::from_utf8_lossy(&prev_sequence));
                                 // slide window over the spanning sequence
                                 let mut splice_offset = 0;
-                                while splice_offset + window_len < prev_sequence.len() as u32 {
+                                while splice_offset + window_len <= prev_sequence.len() as u32 {
                                     let out_seq = &prev_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
                                     let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
                                     debug!("Out Sequence : {:?}", String::from_utf8_lossy(&out_seq));

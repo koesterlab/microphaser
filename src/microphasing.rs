@@ -601,6 +601,45 @@ impl ObservationMatrix {
             let start = offset - exon_start;
             debug!("Start: {}", start);
 
+            //TODO: Activate this part as cleaner code
+/*            let newseq = match rest < 3 {
+                // if there are split-codon bases left at the end of the exon, add them to the sequence
+                true => {
+                    let mut s = Vec::new();
+                    s.extend(&seq[3 as usize..window_len as usize]);
+                    s.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
+                    s
+                }
+                false => match start < 3 {
+                     // if there are split-codon bases at the start of an exon, add them to the sequence
+                    true => {
+                        let mut s = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
+                        s.extend(&seq[..(window_len - 3) as usize]);
+                        s
+                    }
+                    false => Vec::new()
+                }
+            };
+
+            let new_normal = match rest < 3 {
+                // if there are split-codon bases left at the end of the exon, add them to the sequence
+                true => {
+                    let mut s = Vec::new();
+                    s.extend(&germline_seq[3 as usize..window_len as usize]);
+                    s.extend_from_slice(&refseq[(window_end - gene.start()) as usize..(window_end + rest - gene.start()) as usize]);
+                    s
+                }
+                false => match start < 3 {
+                     // if there are split-codon bases at the start of an exon, add them to the sequence
+                    true => {
+                        let mut s = refseq[(offset - start - gene.start()) as usize..(offset - gene.start()) as usize].to_vec();
+                        s.extend(&germline_seq[..(window_len - 3) as usize]);
+                        s
+                    }
+                    false => Vec::new()
+                }
+            };*/
+
             let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
                 gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
                 offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
@@ -939,7 +978,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     let new_mt_sequence = new_mt.as_bytes();
                                     debug!("Complete MT Sequence : {:?}", String::from_utf8_lossy(&new_mt_sequence));
                                     let mut splice_offset = 0;
-                                    while splice_offset + window_len < new_wt_sequence.len() as u32 {
+                                    while splice_offset + window_len <= new_wt_sequence.len() as u32 {
                                         let out_wt_seq = &new_wt_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
                                         let out_mt_seq = &new_mt_sequence[splice_offset as usize..(splice_offset + window_len) as usize];
 
