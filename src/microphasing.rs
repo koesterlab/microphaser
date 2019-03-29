@@ -107,6 +107,7 @@ pub struct IDRecord{
 
 impl IDRecord{
     pub fn update(&self, rec: &IDRecord, offset: u32, seq: Vec<u8>) -> Self {
+        debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
         let id = format!("{:?}{}{}", &seq, &self.transcript, offset);
@@ -115,8 +116,10 @@ impl IDRecord{
 
         let somatic_positions = self.somatic_positions.split("|");
         let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split("|").collect();
+        let other_somatic_aa_change: Vec<&str> = rec.somatic_aa_change.split("|").collect();
         let germline_positions = self.germline_positions.split("|");
         let germline_aa_change: Vec<&str> = self.germline_aa_change.split("|").collect();
+        let other_germline_aa_change: Vec<&str> = rec.germline_aa_change.split("|").collect();
 
         let mut s_p_vec = Vec::new();
         let mut g_p_vec = Vec::new();
@@ -129,6 +132,7 @@ impl IDRecord{
         let mut c = 0;
 
         for p in somatic_positions {
+            debug!("{}",p);
             if p == "" {
                 break;
             }
@@ -149,7 +153,7 @@ impl IDRecord{
             if rec.offset >= p.parse::<u32>().unwrap() - offset {
                 debug!("hey");
                 s_p_vec.push(p.to_string());
-                s_aa_vec.push(somatic_aa_change[c]);
+                s_aa_vec.push(other_somatic_aa_change[c]);
                 nsomatic += 1;
                 nvariants += 1;
                 debug!("{}",nsomatic);
@@ -158,6 +162,7 @@ impl IDRecord{
         }
         c = 0;
         for p in germline_positions {
+            debug!("{}",p);
             if p == "" {
                 break;
             }
@@ -175,7 +180,7 @@ impl IDRecord{
             }
             if rec.offset >= p.parse::<u32>().unwrap() - offset {
                 g_p_vec.push(p.to_string());
-                g_aa_vec.push(germline_aa_change[c]);
+                g_aa_vec.push(other_germline_aa_change[c]);
                 nvariants += 1;
             }
             c += 1;
@@ -509,7 +514,10 @@ impl ObservationMatrix {
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // normal sequence of haplotype
-            let normal_peptide = String::from_utf8_lossy(&germline_seq[..window_len as usize]);
+            let normal_peptide = match germline_seq.len() {
+                0 => String::from_utf8_lossy(&germline_seq),
+                _ => String::from_utf8_lossy(&germline_seq[..window_len as usize])
+            };
             // neopeptide sequence
             let neopeptide = String::from_utf8_lossy(&seq[..window_len as usize]);
             // gathering meta information on haplotype
@@ -925,6 +933,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
                     if at_splice_side {
+
                         debug!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                                 PhasingStrand::Forward => &hap_vec,
@@ -986,6 +995,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Out WT Sequence : {:?}", String::from_utf8_lossy(&out_wt_seq));
                                         // non mutated sites
                                         if out_wt_seq == out_mt_seq {
+                                            debug!("equal");
                                             splice_offset += 3;
                                             continue;
                                         }
