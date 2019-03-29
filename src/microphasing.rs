@@ -509,9 +509,9 @@ impl ObservationMatrix {
             shaid.update(id.as_bytes());
             let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], strand.chars().next().unwrap());
             // normal sequence of haplotype
-            let normal_peptide = String::from_utf8_lossy(&germline_seq);
+            let normal_peptide = String::from_utf8_lossy(&germline_seq[..window_len as usize]);
             // neopeptide sequence
-            let neopeptide = String::from_utf8_lossy(&seq);
+            let neopeptide = String::from_utf8_lossy(&seq[..window_len as usize]);
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
             let mut n_som_variantsites = 0;

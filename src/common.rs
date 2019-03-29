@@ -16,8 +16,15 @@ pub struct Annotation {
 
 impl Annotation {
     pub fn new(rec: &mut bcf::Record) -> Self {
-        let info = str::from_utf8(rec.info(b"ANN").string().unwrap().unwrap_or(Vec::new())[0]).unwrap();
-        let pc = info.split('|').nth(10).unwrap().to_string();
+        //let info = str::from_utf8(rec.info(b"ANN").string().unwrap().unwrap_or(Vec::new())[0]).unwrap_or("");
+        let info = match rec.info(b"ANN").string() {
+            Err(e) => "",
+            Ok(v) => str::from_utf8(v.unwrap_or(Vec::new())[0]).unwrap(),
+        };
+        let pc = match info {
+            "" => "".to_string(),
+            _ => info.split('|').nth(10).unwrap().to_string()
+        };//info.split('|').nth(10).unwrap().to_string();
         Annotation {
             prot_change: pc
         }
