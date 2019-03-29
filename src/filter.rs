@@ -74,10 +74,11 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
 }
 
 fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
-    let mut r = s.to_vec();
+    let case_seq = s.to_ascii_uppercase();
+    let mut r = case_seq.to_vec();
 
     if frame < 0 {
-        r = dna::revcomp(&s.to_vec());
+        r = dna::revcomp(&case_seq.to_vec());
         frame = frame * (-1)
     }
     let mut p = vec![];
@@ -111,12 +112,14 @@ pub fn filter<F: io::Read, O: io::Write>(
             true => 1,
             false => -1
         };
-
+        debug!("{}", String::from_utf8_lossy(seq));
+        debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
         let pepseq = to_protein(seq, frame).unwrap();
 //        println!("{:?}", pepseq);
         ref_set.insert(pepseq);
 
     }
+    debug!("Reference is done!");
 
 /*    // build set of unmutated (wildtype/normal) peptides corresponding to the neopeptides
     let mut wt_map = HashMap::new();
