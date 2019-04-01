@@ -16,6 +16,7 @@ extern crate sha1;
 use std::process;
 use std::error::Error;
 use std::io;
+use std::fs::File;
 
 
 
@@ -28,7 +29,7 @@ pub mod microphasing;
 pub mod common;
 pub mod normal_microphasing;
 pub mod filter;
-
+pub mod build_reference;
 
 
 
@@ -37,16 +38,19 @@ pub fn run() -> Result<(), Box<Error>> {
     let somatic_yaml = load_yaml!("somatic_cli.yaml");
     let germline_yaml = load_yaml!("germline_cli.yaml");
     let filter_yaml = load_yaml!("filter_cli.yaml");
+    let build_yaml = load_yaml!("build_ref_cli.yaml");
     let matches = App::from_yaml(yaml)
                     .version(env!("CARGO_PKG_VERSION"))
                     .subcommand(SubCommand::from_yaml(somatic_yaml))
                     .subcommand(SubCommand::from_yaml(germline_yaml))
                     .subcommand(SubCommand::from_yaml(filter_yaml))
+                    .subcommand(SubCommand::from_yaml(build_yaml))
                     .get_matches();
 
     match matches.subcommand() {
         ("somatic", Some(m)) => run_somatic(m),
         ("normal", Some(m)) => run_normal(m),
+        ("build_reference", Some(m)) => run_build(m),
         ("filter", Some(m)) => run_filtering(m),
         _ => Ok(())
     }
@@ -125,6 +129,25 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
+pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
+    fern::Dispatch::new()
+               .format(|out, message, _| out.finish(format_args!("{}", message)))
+               .level(
+                   if matches.is_present("verbose") {
+                       log::LevelFilter::Debug
+                   } else {
+                       log::LevelFilter::Info
+                   }
+               )
+               .chain(std::io::stderr())
+               .apply().unwrap();
+
+    let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
+    let binary_writer = File::create(&matches.value_of("output").unwrap())?;
+
+    build_reference::build(reference_reader, binary_writer)
+}
+
 pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
     fern::Dispatch::new()
                    .format(|out, message, _| out.finish(format_args!("{}", message)))
@@ -138,7 +161,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
                    .chain(std::io::stderr())
                    .apply().unwrap();
 
-    let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
+    let reference_reader = File::open(&matches.value_of("reference").unwrap())?;
 //    let tumor_reader = fasta::Reader::from_file(&matches.value_of("neopeptides").unwrap())?;
 //    let normal_reader = fasta::Reader::from_file(&matches.value_of("normalpeptides").unwrap())?;
     let mut tsv_reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(&matches.value_of("tsv").unwrap())?;

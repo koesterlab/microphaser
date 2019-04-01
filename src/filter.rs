@@ -5,10 +5,11 @@ use std::fs;
 use std::collections::{HashMap, HashSet};
 
 use bio::io::fasta;
-
 use bio::alphabets;
-
 use alphabets::dna;
+
+extern crate bincode;
+use bincode::deserialize_from;
 
 #[derive(Deserialize,Debug,Serialize)]
 pub struct IDRecord{
@@ -93,7 +94,7 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
 }
 
 pub fn filter<F: io::Read, O: io::Write>(
-    reference_reader: fasta::Reader<F>,
+    reference_reader: fs::File,
     //_tumor_reader: fasta::Reader<F>,
     //_normal_reader: fasta::Reader<F>,
     tsv_reader: &mut csv::Reader<F>,
@@ -101,25 +102,8 @@ pub fn filter<F: io::Read, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>
 ) -> Result<(), Box<Error>> {
-    // build hashSet from reference
-    let mut ref_set = HashSet::new();
-    for record in (reference_reader).records() {
-        let record = record?;
-        let id = record.id();
-        let seq = record.seq();
-        // check if peptide is in forward or reverse orientation
-        let frame = match id.ends_with("F") {
-            true => 1,
-            false => -1
-        };
-        debug!("{}", String::from_utf8_lossy(seq));
-        debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
-        let pepseq = to_protein(seq, frame).unwrap();
-//        println!("{:?}", pepseq);
-        ref_set.insert(pepseq);
-
-    }
-    debug!("Reference is done!");
+    // load HashSet from file
+    let new_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
 
 /*    // build set of unmutated (wildtype/normal) peptides corresponding to the neopeptides
     let mut wt_map = HashMap::new();
@@ -161,7 +145,7 @@ pub fn filter<F: io::Read, O: io::Write>(
         }
 
 //        println!("{:?}", neopeptide);
-        match ref_set.contains(&neopeptide) {
+        match new_set.contains(&neopeptide) {
             true => (),
             false => {
                 fasta_writer.write(&format!("{}", id), None, &neopeptide)?;

@@ -18,7 +18,7 @@ impl Annotation {
     pub fn new(rec: &mut bcf::Record) -> Self {
         //let info = str::from_utf8(rec.info(b"ANN").string().unwrap().unwrap_or(Vec::new())[0]).unwrap_or("");
         let info = match rec.info(b"ANN").string() {
-            Err(e) => "",
+            Err(_e) => "",
             Ok(v) => str::from_utf8(v.unwrap_or(Vec::new())[0]).unwrap(),
         };
         let pc = match info {

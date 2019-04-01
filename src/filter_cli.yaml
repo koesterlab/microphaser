@@ -29,7 +29,7 @@ args:
       short: r
       value_name: FILE
       required: true
-      help: fasta file containing normal reference peptides
+      help: binary file containing reference peptides as HashSet - output from build_reference
   - tsvoutput:
       long: tsvoutput
       short: o
