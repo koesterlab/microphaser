@@ -731,13 +731,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     debug!("Start Phasing");
     read_buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
 
+    let mut max_read_len = 50 as u32;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
+        if rec.seq().len() as u32 > max_read_len {
+        max_read_len = rec.seq().len() as u32;}
         read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
     }
     debug!("Reads Tree length: {}", read_tree.len());
 
-    let max_read_len = 101;
+    //let max_read_len = 75;
 
     // load variant buffer into BTree
     let (_addedvars, _deletedvars) = variant_buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
