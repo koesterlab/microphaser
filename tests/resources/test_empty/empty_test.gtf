@@ -1,4 +1,0 @@
-ENSG00000004776|ENST00000004982	.	gene	10	100	.	+	.	gene_id "001"; gene_name "empty"; transcript_id "001.1"; gene_biotype "protein_coding";
-ENSG00000004776|ENST00000004982	.	transcript	15	90	.	+	.	gene_id "001"; gene_name "empty"; transcript_id "001.1"; gene_biotype "protein_coding";
-ENSG00000004776|ENST00000004982	.	exon	13	80	.	+	.	gene_id "001";gene_name "empty"; transcript_id "001.1"; gene_biotype "protein_coding";
-ENSG00000004776|ENST00000004982	.	CDS	13	80	.	+	.	gene_id "001";gene_name "empty"; transcript_id "001.1"; gene_biotype "protein_coding";

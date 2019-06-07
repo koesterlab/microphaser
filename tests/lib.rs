@@ -6,9 +6,8 @@ use std::process::Command;
 use std::fs;
 use std::path::Path;
 // use std::process;
-use std::error::Error;
 use std::io;
-use http::Uri;
+
 
 
 fn test_output(result: &str, expected: &str) {
@@ -41,12 +40,12 @@ fn microphaser_filter(cmd: &str) {
             .spawn().unwrap().wait().unwrap().success());
 }
 
-fn microphaser_build(cmd: &str) {
+/*fn microphaser_build(cmd: &str) {
     assert!(Command::new("bash")
             .arg("-c")
             .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser build_reference {}", cmd))
             .spawn().unwrap().wait().unwrap().success());
-}
+}*/
 
 
 fn download_reference(chrom: &str) -> String {
@@ -77,9 +76,12 @@ fn test_empty() {
     let reference = download_reference("chr14");
     println!("{}",reference);
     microphaser_somatic(&format!("tests/resources/test_forward/forward_test.bam \
-        --variants tests/resources/test_forward/empty_test.vcf --tsv tests/output/empty_test.tsv \
+        --variants tests/resources/test_empty/empty_test.vcf --tsv tests/output/empty_test.tsv \
+        --normaloutput tests/output/empty_test.normal.fa \
         --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf", reference));
-    test_output("tests/output/empty_test.fa", "tests/resources/test_forward/expected_output/empty_test.fa");
+    test_output("tests/output/empty_test.fa", "tests/resources/test_empty/expected_output/empty_test.fa");
+    test_output("tests/output/empty_test.normal.fa", "tests/resources/test_empty/expected_output/empty_test.normal.fa");
+    test_output("tests/output/empty_test.tsv", "tests/resources/test_empty/expected_output/empty_test.tsv");
 }
 
 /*#[test]

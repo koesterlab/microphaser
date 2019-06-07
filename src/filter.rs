@@ -149,7 +149,9 @@ pub fn filter<F: io::Read, O: io::Write>(
             true => (),
             false => {
                 fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
-                normal_writer.write(&format!("{}", id), None, &wt_peptide)?;
+                // if we don't have a matching normal, do not write an empty entry to the output
+                if wt_peptide.len() > 0 {
+                    normal_writer.write(&format!("{}", id), None, &wt_peptide)?;}
                 tsv_writer.serialize(row)?;
             }
         }
