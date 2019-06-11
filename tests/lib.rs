@@ -14,6 +14,7 @@ fn test_output(result: &str, expected: &str) {
     assert!(Command::new("cmp")
             .arg(result)
             .arg(expected)
+            .arg("--print-bytes")
             .spawn().unwrap().wait().unwrap().success());
     fs::remove_file(result).unwrap();
 }
