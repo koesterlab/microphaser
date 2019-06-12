@@ -11,7 +11,7 @@ use std::io;
 
 
 fn test_output(result: &str, expected: &str) {
-    assert!(Command::new("cmp")
+    assert!(Command::new("diff")
             .arg(result)
             .arg(expected)
             .spawn().unwrap().wait().unwrap().success());
