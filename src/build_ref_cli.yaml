@@ -1,0 +1,21 @@
+name: build_reference
+authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
+about: Build the normal peptidome as reference to filter self-similar neopeptides
+
+global_settings:
+  - ColoredHelp
+
+args:
+  - reference:
+      long: reference
+      short: r
+      value_name: FILE
+      required: true
+      help: fastq file containing reference peptides
+
+  - output:
+      long: output
+      short: o
+      value_name: FILE
+      required: true
+      help: binary output file containing reference peptides as HashSet

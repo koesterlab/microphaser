@@ -1,24 +1,52 @@
 use std::str;
 use std::error::Error;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+
 
 use bio::utils::Strand;
 use rust_htslib::bcf;
 
 use std::borrow::ToOwned;
 
+
+#[derive(Debug)]
+pub struct Annotation {
+    pub prot_change: String
+}
+
+impl Annotation {
+    pub fn new(rec: &mut bcf::Record) -> Self {
+        //let info = str::from_utf8(rec.info(b"ANN").string().unwrap().unwrap_or(Vec::new())[0]).unwrap_or("");
+        let info = match rec.info(b"ANN").string() {
+            Err(_e) => "",
+            Ok(v) => str::from_utf8(v.unwrap_or(Vec::new())[0]).unwrap(),
+        };
+        let pc = match info {
+            "" => "".to_string(),
+            _ => info.split('|').nth(10).unwrap().to_string()
+        };//info.split('|').nth(10).unwrap().to_string();
+        Annotation {
+            prot_change: pc
+        }
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub enum Variant {
-    SNV { pos: u32, alt: u8, is_germline: bool },
-    Insertion { pos: u32, seq: Vec<u8>, is_germline: bool },
-    Deletion { pos: u32, len: u32, is_germline: bool }
+    SNV { pos: u32, alt: u8, is_germline: bool, prot_change: String },
+    Insertion { pos: u32, seq: Vec<u8>, is_germline: bool, prot_change: String },
+    Deletion { pos: u32, len: u32, is_germline: bool, prot_change: String }
 }
 
 
 impl Variant {
     pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
         let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
+
+        let ann = Annotation::new(rec);
+
+        let prot_change = ann.prot_change.as_str();
 
         let pos = rec.pos();
         let alleles = rec.alleles();
@@ -30,20 +58,23 @@ impl Variant {
                         Variant::Deletion {
                         pos: pos,
                         len: (refallele.len() - 1) as u32,
-                        is_germline: is_germline
+                        is_germline: is_germline,
+                        prot_change: prot_change.to_owned()
                     }
                 );
             } else if a.len() > 1 && refallele.len() == 1 {
                 _alleles.push(Variant::Insertion {
                     pos: pos,
                     seq: a[0..].to_owned(),
-                    is_germline: is_germline
+                    is_germline: is_germline,
+                    prot_change: prot_change.to_owned()
                 });
             } else if a.len() == 1 && refallele.len() == 1 {
                 _alleles.push(Variant::SNV {
                     pos: pos,
                     alt: a[0],
-                    is_germline: is_germline
+                    is_germline: is_germline,
+                    prot_change: prot_change.to_owned()
                 });
             } else {
                 warn!(
@@ -51,10 +82,12 @@ impl Variant {
                     str::from_utf8(refallele).unwrap(), str::from_utf8(a).unwrap()
                 );
             }
+
         }
 
         Ok(_alleles)
     }
+
 
     pub fn pos(&self) -> u32 {
         match self {
@@ -80,6 +113,14 @@ impl Variant {
         }
     }
 
+    pub fn prot_change(&self) -> String {
+        match self {
+            &Variant::SNV { ref prot_change, .. } => prot_change.to_owned(),
+            &Variant::Deletion { ref prot_change, .. } => prot_change.to_owned(),
+            &Variant::Insertion { ref prot_change, .. } => prot_change.to_owned()
+        }
+    }
+
     pub fn frameshift(&self) -> u32 {
         match self {
             &Variant::SNV { .. } => 0,
@@ -87,6 +128,7 @@ impl Variant {
             &Variant::Insertion { ref seq, .. } => seq.len() as u32 % 3
         }
     }
+
 }
 
 
