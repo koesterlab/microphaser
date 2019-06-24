@@ -13,15 +13,15 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
   To use microphaser, you need the following input files:
   
   - a sorted and indexed bam file containing mapped tumor reads
-  - your reference genome in fasta format
+  - a reference genome in fasta format
   - the matching gene and transcript annotation in gtf format
-  - a bcf/vcf file containing germline and somatic variants, where the somatic variants should be flagged with a ```SOMATIC``` INFO tag
+  - a bcf/vcf file containing germline and somatic variants, where somatic variants should be flagged with a ```SOMATIC``` INFO tag
   - optional: a bcf/vcf file containing only germline variants
   
 ### Output
   Microphaser returns three important files
-  - two filtered fasta files containing all neo-peptides and their wildtype counterparts for further use with MHC-binding prediction tools
-  - an info file in tsv format containing meta-information about every neo-peptide
+  - two filtered fasta files containing all neopeptides and their wildtype counterparts for further use with MHC-binding prediction tools
+  - an info file in tsv format containing meta-information about every neopeptide
   
   
   The info table consist of the following fields:
@@ -47,10 +47,10 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
 ### Run
   
   Currently, microphaser consists of four different submodules:
-  - somatic (returns neo-peptides and their corresponding wildtype peptides)
+  - somatic (returns neopeptides and their corresponding wildtype peptides)
   - normal (returns all wildtype peptides of the patient)
   - build_reference (returns a binary file representing the patients wildtype peptidome)
-  - filter (compares neo-peptides against the wildtype peptidome and removes self-similar candidates)
+  - filter (compares neopeptides against the wildtype peptidome and removes self-similar candidates)
   
   You can run microphaser like this:
   
