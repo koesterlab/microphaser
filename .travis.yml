@@ -1,9 +1,13 @@
 language: rust
-
 cache: cargo
-
 rust:
   - stable
-
+os:
+  - linux
+env:
+  global:
+    - CARGO_MAKE_RUN_CODECOV="true"
 script:
-  - cargo test
+  - cargo install --debug cargo-make
+  - cargo make ci-flow
+
