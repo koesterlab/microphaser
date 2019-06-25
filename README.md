@@ -56,18 +56,26 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
   
   Phasing of the tumor reads and variants:
 
-  ```microphaser somatic tumor.bam -r reference.fa -b all_variants.bcf -t neopeptides.info.tsv -n wildtype_peptides.fa < reference.gtf > neopeptides.fa```
+  ```
+  microphaser somatic tumor.bam -r reference.fa -b all_variants.bcf -t neopeptides.info.tsv -n wildtype_peptides.fa < reference.gtf > neopeptides.fa
+  ```
   
   Generation of the patients germline peptidome:
   
-  ```microphaser normal healthy.bam -r reference.fa -b germline_variants.bcf -n wildtype_peptides.fa < reference.gtf > germline_peptidome.fa```
+  ```
+  microphaser normal healthy.bam -r reference.fa -b germline_variants.bcf -n wildtype_peptides.fa < reference.gtf > germline_peptidome.fa
+  ```
   
   Building the reference binary file of the germline peptidome: 
   
-  ```microphaser build_reference germline_proteome.fa > germline_proteome.bin```
+  ```
+  microphaser build_reference germline_peptidome.fa > germline_peptidome.bin
+  ```
 
   Filtering the neopeptide candidates from subcommand ```microphaser somatic```: 
 
-  ```microphaser filter -r germline_proteome.bin -t neopeptides.info.tsv -o neopeptides.filtered.info.tsv -n wildtype_peptides.filtered.fa > neopeptides.filtered.fa```
+  ```
+  microphaser filter -r germline_peptidome.bin -t neopeptides.info.tsv -o neopeptides.filtered.info.tsv -n wildtype_peptides.filtered.fa > neopeptides.filtered.fa
+  ```
   
   
