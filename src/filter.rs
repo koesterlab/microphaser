@@ -1,18 +1,18 @@
 use std::error::Error;
-use std::io;
 use std::fs;
+use std::io;
 
 use std::collections::{HashMap, HashSet};
 
-use bio::io::fasta;
-use bio::alphabets;
 use alphabets::dna;
+use bio::alphabets;
+use bio::io::fasta;
 
 extern crate bincode;
 use bincode::deserialize_from;
 
-#[derive(Deserialize,Debug,Serialize)]
-pub struct IDRecord{
+#[derive(Deserialize, Debug, Serialize)]
+pub struct IDRecord {
     id: String,
     transcript: String,
     gene_id: String,
@@ -30,7 +30,7 @@ pub struct IDRecord{
     germline_positions: String,
     germline_aa_change: String,
     normal_sequence: String,
-    mutant_sequence: String
+    mutant_sequence: String,
 }
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
@@ -70,11 +70,11 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
     let map = make_pairs();
     match map.get(v) {
         Some(aa) => Ok(aa),
-        None => Err(())
+        None => Err(()),
     }
 }
 
-fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
+fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
     let case_seq = s.to_ascii_uppercase();
     let mut r = case_seq.to_vec();
 
@@ -100,12 +100,12 @@ pub fn filter<F: io::Read, O: io::Write>(
     tsv_reader: &mut csv::Reader<F>,
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
-    tsv_writer: &mut csv::Writer<fs::File>
+    tsv_writer: &mut csv::Writer<fs::File>,
 ) -> Result<(), Box<Error>> {
     // load HashSet from file
     let new_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
 
-/*    // build set of unmutated (wildtype/normal) peptides corresponding to the neopeptides
+    /*    // build set of unmutated (wildtype/normal) peptides corresponding to the neopeptides
     let mut wt_map = HashMap::new();
     for record in (normal_reader).records() {
         let record = record?;
@@ -131,12 +131,12 @@ pub fn filter<F: io::Read, O: io::Write>(
         let wt_seq = &row.normal_sequence.as_bytes();
         let frame = match id.ends_with("F") {
             true => 1,
-            false => -1
+            false => -1,
         };
         let neopeptide = to_protein(mt_seq, frame).unwrap();
         let wt_peptide = match wt_seq.len() == 0 {
             true => vec![],
-            false => to_protein(wt_seq, frame).unwrap()
+            false => to_protein(wt_seq, frame).unwrap(),
         };
 
         // exclude silent mutations
@@ -144,21 +144,21 @@ pub fn filter<F: io::Read, O: io::Write>(
             continue;
         }
 
-//        println!("{:?}", neopeptide);
+        //        println!("{:?}", neopeptide);
         match new_set.contains(&neopeptide) {
             true => (),
             false => {
                 fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
                 // if we don't have a matching normal, do not write an empty entry to the output
                 if wt_peptide.len() > 0 {
-                    normal_writer.write(&format!("{}", id), None, &wt_peptide)?;}
+                    normal_writer.write(&format!("{}", id), None, &wt_peptide)?;
+                }
                 tsv_writer.serialize(row)?;
             }
         }
-
     }
 
-/*    // iterate over neopeptides
+    /*    // iterate over neopeptides
     for record in (tumor_reader).records() {
         let record = record?;
         let id = record.id();
