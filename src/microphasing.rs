@@ -106,11 +106,11 @@ pub struct IDRecord{
 }
 
 impl IDRecord{
-    pub fn update(&self, rec: &IDRecord, offset: u32, seq: Vec<u8>) -> Self {
+    pub fn update(&self, rec: &IDRecord, offset: u32, wt_seq: Vec<u8>, mt_seq: Vec<u8>) -> Self {
         debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
-        let id = format!("{:?}{}{}", &seq, &self.transcript, offset);
+        let id = format!("{:?}{}{}", &mt_seq, &self.transcript, offset);
         shaid.update(id.as_bytes());
         let fasta_id = format!("{}{}", &shaid.digest().to_string()[..15], self.strand.chars().next().unwrap());
 
@@ -190,7 +190,7 @@ impl IDRecord{
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
             offset: offset + self.offset, freq: self.freq * rec.freq, nvar: nvariants, nsomatic: nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(), somatic_positions: s_p_vec.join("|"), somatic_aa_change: s_aa_vec.join("|"), germline_positions: g_p_vec.join("|"), germline_aa_change: g_aa_vec.join("|"),
-            normal_sequence: self.normal_sequence.to_owned(), mutant_sequence: self.mutant_sequence.to_owned()
+            normal_sequence: String::from_utf8(wt_seq).unwrap(), mutant_sequence: String::from_utf8(mt_seq).unwrap()
         }
     }
 
@@ -1002,7 +1002,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             splice_offset += 3;
                                             continue;
                                         }
-                                        let out_record = prev_record.update(record, splice_offset + 3, out_mt_seq.to_vec());
+                                        let out_record = prev_record.update(record, splice_offset + 3, out_wt_seq.to_vec(), out_mt_seq.to_vec());
                                         debug!("prevRecord: {:?}",prev_record);
                                         debug!("afterRecord: {:?}",record);
                                         debug!("Record: {:?}",out_record);
@@ -1029,7 +1029,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 }
                             }
                         }
-//                      let out_record = prev_record.update(record, splice_offset + 3, out_seq.to_vec());
                         for (_key, val) in output_map.iter() {
                             let out_record = &val.1;
                             let out_mt_seq = &val.0;
