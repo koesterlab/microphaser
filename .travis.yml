@@ -9,5 +9,6 @@ env:
     - CARGO_MAKE_RUN_CODECOV="true"
 script:
   - cargo install --debug cargo-make
+  - cargo make check-format
   - cargo make ci-flow
 
