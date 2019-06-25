@@ -1,4 +1,4 @@
-# microphaser
+# Microphaser
 
 Microphaser is a tool for phasing small tumor DNA sequences - e.g. coding for small peptides - in linear time.  
 It can be used in tumor neoantigen prediction to generate the neo-peptidome.
@@ -78,4 +78,7 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
   microphaser filter -r germline_peptidome.bin -t neopeptides.info.tsv -o neopeptides.filtered.info.tsv -n wildtype_peptides.filtered.fa > neopeptides.filtered.fa
   ```
   
-  
+## Authors
+
+* Jan Forster (https://github.com/jafors)
+* Johannes Köster (https://koesterlab.github.io) 
