@@ -13,6 +13,7 @@ use bincode::serialize_into;
 
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
+    // data structure for mapping codons to amino acids
     let grouped = vec![
         ("I", vec!["ATT", "ATC", "ATA"]),
         ("L", vec!["CTT", "CTC", "CTA", "CTG", "TTA", "TTG"]),
@@ -46,6 +47,7 @@ fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
 }
 
 fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
+    // translate a codon triplet to amino acid
     let map = make_pairs();
     match map.get(v) {
         Some(aa) => Ok(aa),
@@ -56,13 +58,14 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
 fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
     let case_seq = s.to_ascii_uppercase();
     let mut r = case_seq.to_vec();
-
+    // reverse complement the sequence if the transcript is in reverse orientation
     if frame < 0 {
         r = dna::revcomp(&case_seq.to_vec());
         frame = frame * (-1)
     }
     let mut p = vec![];
     let mut i = frame as usize - 1;
+    // iterate over all codons in the sequence and translate them
     while i < r.len() - 2 {
         let sub = &r[i..(i + 3)];
         let aa = to_aminoacid(sub)?;
@@ -76,7 +79,7 @@ pub fn build<F: io::Read>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
 ) -> Result<(), Box<Error>> {
-    // build hashSet from reference
+    // build hashSet from reference peptide sequences
     let mut ref_set = HashSet::new();
     for record in (reference_reader).records() {
         let record = record?;
@@ -90,10 +93,10 @@ pub fn build<F: io::Read>(
         debug!("{}", String::from_utf8_lossy(seq));
         debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
         let pepseq = to_protein(seq, frame).unwrap();
-//        println!("{:?}", pepseq);
         ref_set.insert(pepseq);
 
     }
+    // save as binary
     serialize_into(binary_writer, &ref_set)?;
     debug!("Reference is done!");
     Ok(())

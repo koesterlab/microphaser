@@ -9,7 +9,7 @@ use bio::alphabets;
 use alphabets::dna;
 
 extern crate bincode;
-use bincode::deserialize_from;
+use bincode::{deserialize_from, serialize_into};
 
 #[derive(Deserialize,Debug,Serialize)]
 pub struct IDRecord{
@@ -94,6 +94,33 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
         i += 3;
     }
     Ok(p)
+}
+
+pub fn build<F: io::Read>(
+    reference_reader: fasta::Reader<F>,
+    binary_writer: fs::File,
+) -> Result<(), Box<Error>> {
+    // build hashSet from reference peptide sequences
+    let mut ref_set = HashSet::new();
+    for record in (reference_reader).records() {
+        let record = record?;
+        let id = record.id();
+        let seq = record.seq();
+        // check if peptide is in forward or reverse orientation
+        let frame = match id.ends_with("F") {
+            true => 1,
+            false => -1
+        };
+        debug!("{}", String::from_utf8_lossy(seq));
+        debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
+        let pepseq = to_protein(seq, frame).unwrap();
+        ref_set.insert(pepseq);
+
+    }
+    // save as binary
+    serialize_into(binary_writer, &ref_set)?;
+    debug!("Reference is done!");
+    Ok(())
 }
 
 pub fn filter<F: io::Read, O: io::Write>(

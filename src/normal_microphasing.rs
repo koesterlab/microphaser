@@ -39,10 +39,6 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
-//            debug!("Variant pos: {}", variant.pos());
-//            debug!("Read pos: {}", read.pos());
-//            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
-//            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
             let b = match read.cigar().read_pos(pos, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
@@ -543,8 +539,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     }
     debug!("Reads Tree length: {}", read_tree.len());
 
-    //let max_read_len = 101;
-
     // load variant buffer into BTree
     let (_addedvars, _deletedvars) = variant_buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
     let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
@@ -667,12 +661,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("Reads: {}", reads.len());
                     for read in reads {
                         observations.push_read(read.clone(), offset + window_len, offset, reverse)?;
-//                        if transcript.strand == Strand::Reverse {
-//                            observations.push_read(read.clone(), offset + window_len, offset, true)?;
-//                        }
-//                        else {
-//                            observations.push_read(read.clone(), offset + window_len, offset, false)?;
-//                        }
                     }
 
 
@@ -711,9 +699,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if coding_shift % 3 == frameshift + current_exon_offset {
                             // print haplotypes
                             debug!("Should print haplotypes");
-//                            hap_vec = observations.print_haplotypes(
-//                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
-//                            ).unwrap();
                             // possible unfinished codon at the end of an exon that continues at the start of the next exon
                             exon_rest = match transcript.strand {
                                 PhasingStrand::Forward => exon.end - (offset + window_len),
@@ -747,9 +732,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 PhasingStrand::Forward => &prev_hap_vec,
                                 PhasingStrand::Reverse => &hap_vec
                         };
-                        //close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
-                        //let it = prev_hap_vec.cartesian_product(hap_vec);
-                        //let mut splice_sequences = Vec::new();
                         let mut output_map: BTreeMap<(u32, Vec<u8>), (Vec<u8>, IDRecord)> = BTreeMap::new();
 
                         // iterate over all combinations of splice side haplotypes

@@ -30,6 +30,7 @@ pub mod common;
 pub mod normal_microphasing;
 pub mod filter;
 pub mod build_reference;
+pub mod peptides;
 
 
 
@@ -145,7 +146,7 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
     let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
     let binary_writer = File::create(&matches.value_of("output").unwrap())?;
 
-    build_reference::build(reference_reader, binary_writer)
+    peptides::build(reference_reader, binary_writer)
 }
 
 pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
@@ -162,17 +163,13 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
                    .apply().unwrap();
 
     let reference_reader = File::open(&matches.value_of("reference").unwrap())?;
-//    let tumor_reader = fasta::Reader::from_file(&matches.value_of("neopeptides").unwrap())?;
-//    let normal_reader = fasta::Reader::from_file(&matches.value_of("normalpeptides").unwrap())?;
     let mut tsv_reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(&matches.value_of("tsv").unwrap())?;
 
     let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsvoutput").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
-//    filter::filter(reference_reader, tumor_reader,  normal_reader, &mut tsv_reader, &mut fasta_writer,
-//         &mut normal_writer, &mut tsv_writer)
-    filter::filter(reference_reader, &mut tsv_reader, &mut fasta_writer,
+    peptides::filter(reference_reader, &mut tsv_reader, &mut fasta_writer,
          &mut normal_writer, &mut tsv_writer)
 }
 

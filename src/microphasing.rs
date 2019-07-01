@@ -42,22 +42,11 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
-//            debug!("Variant pos: {}", variant.pos());
-//            debug!("Read pos: {}", read.pos());
-//            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
-//            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
-//            for c in read.cigar().iter() {
-//                match c {
-//                    &Cigar::Del(_) => return Ok(false),
-//                    _ => ()
-//                }
-//            }
             let b = match read.cigar().read_pos(pos, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
                 _ => return Ok(false)
             };
-//            let b = read.seq()[read.cigar().read_pos(pos, false, false)?.expect("bug: read does not enclose variant") as usize];
             Ok(b == alt)
         },
         &Variant::Insertion {..} => {
@@ -335,18 +324,11 @@ impl ObservationMatrix {
             for (i, variant) in self.variants.iter().enumerate() {
                 obs.update_haplotype(i, variant)?;
             }
-            // debug!("Read: {}; haplotype: {}", String::from_utf8_lossy(obs.read.qname()), obs.haplotype);
             let pos = match reverse {
                 true => start_pos,
                 false => end_pos
             };
             self.observations.entry(pos).or_insert_with(|| Vec::new()).push(obs);
-//            if reverse {
-//                self.observations.entry(start_pos).or_insert_with(|| Vec::new()).push(obs);
-//            }
-//            else {
-//                self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(obs);
-//            }
         }
         Ok(())
     }
@@ -433,11 +415,6 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
-//                        if freq == 1.0 && !(variants[j].is_germline()) {
-//                            j += 1;
-//                            variant_profile.push(0);
-//                            continue;
-//                        }
                         if bitvector_is_set(haplotype, j) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j+1].pos() {
@@ -504,10 +481,6 @@ impl ObservationMatrix {
             if indel {
                 germline_seq.clear();
             }
-//            // no somatic variant, no neopeptide
-//            if n_somatic == 0 {
-//                continue;
-//            }
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}{}", &seq, transcript.id, offset);
@@ -550,8 +523,6 @@ impl ObservationMatrix {
                             _ => {}
                         }
                     }
-//                    var_pos = format!("{}",variants[0].pos());
-//                    p_changes = variants[0].prot_change();
                     n_variantsites += 1;
                     if !(variants[0].is_germline()) {
                         n_som_variantsites += 1;
@@ -574,8 +545,6 @@ impl ObservationMatrix {
                             _ => {}
                         }
                     }
-//                    var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
-//                    p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
                     if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                         n_variantsites += 1;
                         if !(variants[c as usize].is_germline()) {
@@ -740,12 +709,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     }
     debug!("Reads Tree length: {}", read_tree.len());
 
-    //let max_read_len = 75;
-
     // load variant buffer into BTree
     let (_addedvars, _deletedvars) = variant_buffer.fetch(&gene.chrom.as_bytes(),gene.start(),gene.end())?;
     let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
-
 
     for transcript in &gene.transcripts {
         debug!("is coding: {}", transcript.is_coding());
@@ -864,12 +830,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("Reads: {}", reads.len());
                     for read in reads {
                         observations.push_read(read.clone(), offset + window_len, offset, reverse)?;
-//                        if transcript.strand == Strand::Reverse {
-//                            observations.push_read(read.clone(), offset + window_len, offset, true)?;
-//                        }
-//                        else {
-//                            observations.push_read(read.clone(), offset + window_len, offset, false)?;
-//                        }
                     }
 
 
@@ -908,9 +868,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if coding_shift % 3 == frameshift + current_exon_offset {
                             // print haplotypes
                             debug!("Should print haplotypes");
-//                            hap_vec = observations.print_haplotypes(
-//                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
-//                            ).unwrap();
                             // possible unfinished codon at the end of an exon that continues at the start of the next exon
                             exon_rest = match transcript.strand {
                                 PhasingStrand::Forward => exon.end - (offset + window_len),
@@ -948,30 +905,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         };
                         debug!("{:?}", first_hap_vec);
                         debug!("{:?}", sec_hap_vec);
-                        //close_splicing_gap(&prev_hap_vec, &hap_vec, fasta_writer, tsv_writer, prot_writer);
-                        //let it = prev_hap_vec.cartesian_product(hap_vec);
-                        //let mut splice_sequences = Vec::new();
                         let mut output_map: BTreeMap<(u32, Vec<u8>, Vec<u8>), (Vec<u8>, IDRecord, Vec<u8>)> = BTreeMap::new();
 
                         // iterate over all combinations of splice side haplotypes
                         for hapseq in first_hap_vec{
-                            //let sequence = &hapseq.sequence;
                             let record = &hapseq.record;
                             let wt_sequence = &record.normal_sequence;
                             let mt_sequence = &record.mutant_sequence;
                             for prev_hapseq in sec_hap_vec {
-                                //let mut prev_sequence = prev_hapseq.sequence.clone();
                                 let prev_record = &prev_hapseq.record;
                                 let prev_wt_sequence = &prev_record.normal_sequence;
                                 let prev_mt_sequence = &prev_record.mutant_sequence;
-//                                match transcript.strand {
-//                                    PhasingStrand::Forward => prev_sequence.extend(sequence),
-//                                    PhasingStrand::Reverse => sequence.extend(prev_sequence)
-//                                };
-//                                let complete_seq = match transcript.strand {
-//                                    PhasingStrand::Forward => prev_sequence,
-//                                    PhasingStrand::Reverse => sequence
-//                                };
                                 // combine the normal sequence
                                 let new_wt = format!("{}{}", prev_wt_sequence, wt_sequence);
                                 let new_wt_sequence = new_wt.as_bytes();
@@ -1008,15 +952,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Record: {:?}",out_record);
                                         // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
                                         let id_tuple = (splice_offset, out_mt_seq.to_vec(), out_wt_seq.to_vec());
-                                        //                                    match output_map.get_mut(&id_tuple) {
-                                        //                                        Some(old_entry) => {
-                                        //                                            let old_freq = old_entry.1.freq;
-                                        //                                            *old_entry = (out_seq.to_vec(), out_record.add_freq(old_freq));
-                                        //                                        },
-                                        //                                        None => {
-                                        //                                            output_map.insert(id_tuple, (out_seq.to_vec(), out_record));
-                                        //                                        }
-                                        //                                    }
                                         let old_freq = match output_map.get_mut(&id_tuple) {
                                             Some(x) => x.1.freq,
                                             None => 0.0
@@ -1034,9 +969,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             let out_mt_seq = &val.0;
                             let out_wt_seq = &val.2;
                              debug!("Out Sequence 2: {:?}", String::from_utf8_lossy(&out_mt_seq));
-//                            if out_record.nsomvariant_sites > 0 && out_record.nsomatic == 0 {
-//                                normal_writer.write(&format!("{}", out_record.id), None, &out_seq[..window_len as usize])?;
-//                            }
                             // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
                             if out_record.nsomatic > 0 {
                                 fasta_writer.write(&format!("{}", out_record.id), None, &out_mt_seq[..window_len as usize])?;
@@ -1044,12 +976,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 tsv_writer.serialize(out_record)?;
                             }
                         }
-                                //splice_sequences.push(HaplotypeSeq {sequence: prev_sequence, frequency: complete_freq});
-//                            }
-//                        }
-//                        //prev_hap_vec = Vec::new();
-//                    }
-//                    //prev_hap_vec = hap_vec;
                     }
                     old_offset = offset;
                     match transcript.strand {
@@ -1101,10 +1027,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     for record in gtf_reader.records() {
         let record = record?;
-//        match record.strand() {
-//            Some(Strand::Forward) => (),
-//            Some(Strand::Reverse) => (),
-//            _ => panic!("Strand unknown in GTF. Should be + or -")}
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
