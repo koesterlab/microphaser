@@ -78,6 +78,7 @@ pub struct IDRecord{
     chrom: String,
     offset: u32,
     freq: f64,
+    depth: u32,
     nvar: u32,
     nsomatic: u32,
     nvariant_sites: u32,
@@ -106,7 +107,7 @@ impl IDRecord{
         germline_aa_change.push_str(&rec.germline_aa_change);
         debug!("nvars {} {}",self.nvar,rec.nvar);
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
-            offset: offset + self.offset, freq: self.freq * rec.freq, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
+            offset: offset + self.offset, freq: self.freq * rec.freq, depth: self.depth, nvar: self.nvar + rec.nvar, nsomatic: self.nsomatic + rec.nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(), somatic_positions: somatic_positions, somatic_aa_change: somatic_aa_change, germline_positions: germline_positions, germline_aa_change: germline_aa_change}
     }
 
@@ -120,7 +121,7 @@ impl IDRecord{
             false => self.nsomatic
         };
         IDRecord{id: self.id.to_owned(), transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
-            offset: self.offset, freq: self.freq + freq, nvar: new_nvar, nsomatic: new_somatic , nvariant_sites: self.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites,
+            offset: self.offset, freq: self.freq + freq, depth: self.depth, nvar: new_nvar, nsomatic: new_somatic , nvariant_sites: self.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites,
             strand: self.strand.to_owned(), somatic_positions: self.somatic_positions.to_owned(), somatic_aa_change: self.somatic_aa_change.to_owned(), germline_positions: self.germline_positions.to_owned(), germline_aa_change: self.germline_aa_change.to_owned()}
     }
 
@@ -314,6 +315,7 @@ impl ObservationMatrix {
             let mut n_somatic = 0;
             let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
+            let depth = self.nrows() as u32;
             let mut i = offset;
             let mut j = 0;
             let mut window_end = offset + window_len;
@@ -460,7 +462,7 @@ impl ObservationMatrix {
             // build the info record
             let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(),
                 gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(),
-                chrom: gene.chrom.to_owned(), offset, freq, nvar: n_variants, nsomatic: n_somatic,
+                chrom: gene.chrom.to_owned(), offset, freq, depth, nvar: n_variants, nsomatic: n_somatic,
                 nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32,
                 strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()};
@@ -497,7 +499,7 @@ impl ObservationMatrix {
             let hap_seq = HaplotypeSeq {sequence: newseq,
                 record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(),
                     gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
-                    offset, freq, nvar: n_variants, nsomatic: n_somatic,
+                    offset, freq, depth, nvar: n_variants, nsomatic: n_somatic,
                     nvariant_sites: n_variantsites as u32, nsomvariant_sites: n_som_variantsites as u32,
                     strand: strand.to_string(), somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned()}};

@@ -20,6 +20,7 @@ pub struct IDRecord{
     chrom: String,
     offset: u32,
     freq: f64,
+    depth: u32,
     nvar: u32,
     nsomatic: u32,
     nvariant_sites: u32,
