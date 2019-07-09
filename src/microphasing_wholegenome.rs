@@ -12,7 +12,6 @@ use vec_map::VecMap;
 
 use bio::io::fasta;
 use bio::io::gff;
-use bio::utils::Strand;
 use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
 
@@ -293,9 +292,9 @@ impl ObservationMatrix {
             // Profile for all variants: 0 - reference, 1 - germline, 2 - somatic
             let mut variant_profile = Vec::new();
             //let mut somatic_profile = Vec::new();
-            if variants.is_empty() {
-                germline_seq.extend(&refseq[offset as usize..(offset + window_len - chrom_len) as usize]);
-                seq.extend(&refseq[offset as usize..(offset + window_len - chrom_len) as usize]);
+            if variants.len() < 2 {
+                germline_seq.extend(&refseq[offset as usize..(offset + window_len) as usize]);
+                seq.extend(&refseq[offset as usize..(offset + window_len) as usize]);
                 //continue;
             } else {
                 while i < window_end {
@@ -476,7 +475,7 @@ impl ObservationMatrix {
             debug!("relevant_check: {}, nvar: {}, freq: {} ", !(only_relevant), record.nvar > 0, record.freq < 1.00);
             debug!("is_relevant: {}", !(only_relevant) ||  record.freq < 1.00 || record.nvar > 0);
             // write neopeptides, information and matching normal peptide to files
-            if record.nsomatic > 0 {
+            if record.nvariant_sites > 1 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
                 if germline_seq.len() > 0 {
                     normal_writer.write(&format!("{}", record.id), None, &germline_seq[..window_len as usize])?;
@@ -504,7 +503,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 ) -> Result<(), Box<Error>> {
     // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
     let end_overflow = 100;
-    fasta_reader.read(&sequence.name, 0 as u64, sequence.len - 1, refseq)?;
+    fasta_reader.fetch(&sequence.name, 0 as u64, sequence.len - 1)?;
+    fasta_reader.read(refseq)?;
     let mut variant_tree = BTreeMap::new();
     let mut read_tree = BTreeMap::new();
     debug!("Start Phasing");
@@ -570,7 +570,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         let reads = {
             // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
             if offset == 0 {
-                Itertools::flatten(read_tree.range((offset-(max_read_len - window_len))..(offset+1)).map(|rec| rec.1)).collect_vec()
+                Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
             }
             // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
             else {

@@ -12,9 +12,10 @@ use vec_map::VecMap;
 
 use bio::io::fasta;
 use bio::io::gff;
-use bio::utils::Strand;
 use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
+
+use bio_types::strand::Strand;
 
 
 use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand};
@@ -725,7 +726,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 ) -> Result<(), Box<Error>> {
     // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
     let end_overflow = 100;
-    fasta_reader.read(&gene.chrom, gene.start() as u64, (gene.end() + end_overflow) as u64, refseq)?;
+    fasta_reader.fetch(&gene.chrom, gene.start() as u64, (gene.end() + end_overflow) as u64)?;
+    fasta_reader.read(refseq)?;
     let mut variant_tree = BTreeMap::new();
     let mut read_tree = BTreeMap::new();
     debug!("Start Phasing");

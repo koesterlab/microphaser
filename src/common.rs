@@ -2,8 +2,8 @@ use std::str;
 use std::error::Error;
 use std::cmp::Ordering;
 
+use bio_types::strand::Strand;
 
-use bio::utils::Strand;
 use rust_htslib::bcf;
 
 use std::borrow::ToOwned;
