@@ -423,7 +423,7 @@ impl ObservationMatrix {
                         _ => {}
                     }
                     // check if variant position is already in the variant_site list
-                    if (c == 0) {
+                    if c == 0 {
                         n_variantsites += 1;
                         variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {

@@ -11,12 +11,11 @@ use itertools::Itertools;
 use vec_map::VecMap;
 
 use bio::io::fasta;
-use bio::io::gff;
 use rust_htslib::{bam, bcf};
 use rust_htslib::bam::record::Cigar;
 
 
-use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand};
+use crate::common::{Variant, Interval};
 
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
@@ -240,13 +239,12 @@ impl ObservationMatrix {
         chrom: &String,
         offset: u32,
         window_len: u32,
-        chrom_len: u32,
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
-    ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
+    ) -> Result<(), Box<Error>> {
 
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
@@ -259,8 +257,6 @@ impl ObservationMatrix {
         let mut germline_seq = Vec::with_capacity(window_len as usize);
         debug!("Printing at offset: {}",offset);
         debug!("refseq length {}", refseq.len());
-
-        let mut haplotypes_vec = Vec::new();
 
         for (haplotype, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
@@ -399,7 +395,7 @@ impl ObservationMatrix {
                         _ => {}
                     }
                     // check if variant position is already in the variant_site list
-                    if (c == 0) {
+                    if c == 0 {
                         n_variantsites += 1;
                         variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {
@@ -442,8 +438,7 @@ impl ObservationMatrix {
                     tsv_writer.serialize(record)?;
             }
         }
-        debug!("{:?}", haplotypes_vec);
-        Ok(haplotypes_vec)
+        Ok(())
     }
 }
 
@@ -460,8 +455,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     refseq: &mut Vec<u8>,
     only_relevant: bool
 ) -> Result<(), Box<Error>> {
-    // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
-    let end_overflow = 100;
     fasta_reader.fetch(&sequence.name, 0 as u64, sequence.len - 1)?;
     fasta_reader.read(refseq)?;
     let mut variant_tree = BTreeMap::new();
@@ -487,16 +480,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     let mut observations = ObservationMatrix::new();
     let mut frameshifts = BTreeMap::new();
     frameshifts.insert(0, 0);
-    // Haplotypes from the end of the last exon
-    let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
-    let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
-    // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
-    let mut last_window_vars = 0;
     let mut offset = 0;
     let mut old_offset = offset;
-    debug!("Variants left from previous Exon: {}", last_window_vars);
-    observations.shrink_left(last_window_vars);
-    last_window_vars = 0;
     loop {
         let valid = offset + window_len <= sequence.len  as u32 - 1;
         if !valid {
@@ -505,8 +490,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         debug!("Offset {}, old offset {}", offset, old_offset);
         // advance window to next position
         let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
-        // store number of variants in window in case it is the last window for this exon
-        last_window_vars = nvars;
         debug!("Variants in window: {}",nvars);
         // first window in the exon, all variants found are newly added
         let added_vars = if offset == old_offset {
@@ -580,8 +563,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if coding_shift % 3 == frameshift {
                     // print haplotypes
                     debug!("Should print haplotypes");
-                    prev_hap_vec = observations.print_haplotypes(
-                        chrom, offset, window_len, sequence.len as u32 -1, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
+                    observations.print_haplotypes(
+                        chrom, offset, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
                     ).unwrap();
                 }
             }
@@ -608,7 +591,7 @@ pub fn phase<F: io::Read + io::Seek, O: io::Write>(
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());
-    let mut seqs = fasta_reader.index.sequences();
+    let seqs = fasta_reader.index.sequences();
     for s in seqs {
         phase_gene(&s, fasta_reader, &mut read_buffer, &mut variant_buffer, fasta_writer, tsv_writer, normal_writer, window_len, &mut refseq, only_relevant)?;
     }
