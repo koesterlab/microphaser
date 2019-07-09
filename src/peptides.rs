@@ -26,6 +26,7 @@ pub struct IDRecord{
     nvariant_sites: u32,
     nsomvariant_sites: u32,
     strand: String,
+    variant_sites: String,
     somatic_positions: String,
     somatic_aa_change: String,
     germline_positions: String,

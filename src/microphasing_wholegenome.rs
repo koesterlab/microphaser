@@ -45,18 +45,11 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 //            debug!("Read pos: {}", read.pos());
 //            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
 //            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
-//            for c in read.cigar().iter() {
-//                match c {
-//                    &Cigar::Del(_) => return Ok(false),
-//                    _ => ()
-//                }
-//            }
             let b = match read.cigar().read_pos(pos, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
                 _ => return Ok(false)
             };
-//            let b = read.seq()[read.cigar().read_pos(pos, false, false)?.expect("bug: read does not enclose variant") as usize];
             Ok(b == alt)
         },
         &Variant::Insertion {..} => {
@@ -88,10 +81,12 @@ pub struct IDRecord{
     chrom: String,
     offset: u32,
     freq: f64,
+    depth: u32,
     nvar: u32,
     nsomatic: u32,
     nvariant_sites: u32,
     nsomvariant_sites: u32,
+    variant_sites: String,
     somatic_positions: String,
     somatic_aa_change: String,
     germline_positions: String,
@@ -228,12 +223,6 @@ impl ObservationMatrix {
             // debug!("Read: {}; haplotype: {}", String::from_utf8_lossy(obs.read.qname()), obs.haplotype);
             let pos = end_pos;
             self.observations.entry(pos).or_insert_with(|| Vec::new()).push(obs);
-//            if reverse {
-//                self.observations.entry(start_pos).or_insert_with(|| Vec::new()).push(obs);
-//            }
-//            else {
-//                self.observations.entry(end_pos).or_insert_with(|| Vec::new()).push(obs);
-//            }
         }
         Ok(())
     }
@@ -286,6 +275,7 @@ impl ObservationMatrix {
             let mut n_somatic = 0;
             let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
+            let depth = self.nrows() as u32;
             let mut i = offset;
             let mut j = 0;
             let mut window_end = offset + window_len;
@@ -295,21 +285,14 @@ impl ObservationMatrix {
             if variants.len() < 2 {
                 germline_seq.extend(&refseq[offset as usize..(offset + window_len) as usize]);
                 seq.extend(&refseq[offset as usize..(offset + window_len) as usize]);
-                //continue;
             } else {
                 while i < window_end {
                     debug!("window_end: {}", window_end);
                     debug!("i: {}", i);
                     debug!("j: {}", j);
                     // TODO what happens if a deletion starts upstream of window and overlaps it
-
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
-//                        if freq == 1.0 && !(variants[j].is_germline()) {
-//                            j += 1;
-//                            variant_profile.push(0);
-//                            continue;
-//                        }
                         if bitvector_is_set(haplotype, j) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j+1].pos() {
@@ -332,7 +315,6 @@ impl ObservationMatrix {
                                         false => indel = true
                                     }
                                     seq.extend(switch_ascii_case_vec(s, refseq[i as usize]).into_iter());
-                                    //indel = true;
                                     i += 1;
                                     window_end -= (s.len() as u32) -1;
                                 },
@@ -343,7 +325,6 @@ impl ObservationMatrix {
                                         false => indel = true
                                     }
                                     seq.push(refseq[i as usize]);
-                                    //indel = true;
                                     i += len + 1;
                                     window_end += len + 1;
                                 }
@@ -376,10 +357,6 @@ impl ObservationMatrix {
             if indel {
                 germline_seq.clear();
             }
-//            // no somatic variant, no neopeptide
-//            if n_somatic == 0 {
-//                continue;
-//            }
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}", &seq, offset);
@@ -402,54 +379,36 @@ impl ObservationMatrix {
             // position of the variant
             let mut somatic_var_pos_vec = Vec::new();
             let mut germline_var_pos_vec = Vec::new();
+            let mut variantsites_pos_vec = Vec::new();
             // gather information iterating over the variants
             debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
-                if c == 0 {
-                    if c < variant_profile.len() as u32 {
-                        match variant_profile[0] {
-                            // somatic
-                            2 => {
-                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // germline
-                            1 => {
-                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                germline_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // not present in this haplotype
-                            _ => {}
-                        }
+                if c < variant_profile.len() as u32 {
+                    match variant_profile[c as usize] {
+                        // somatic
+                        2 => {
+                            somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            somatic_p_changes_vec.push(variants[c as usize].prot_change());
+                        },
+                        // germline
+                        1 => {
+                            germline_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            germline_p_changes_vec.push(variants[c as usize].prot_change());
+                        },
+                        // not present in this haplotype
+                        _ => {}
                     }
-//                    var_pos = format!("{}",variants[0].pos());
-//                    p_changes = variants[0].prot_change();
-                    n_variantsites += 1;
-                    if !(variants[0].is_germline()) {
-                        n_som_variantsites += 1;
-                    }
-                }
-                else {
-                    if c < variant_profile.len() as u32 {
-                        match variant_profile[c as usize] {
-                            // somatic
-                            2 => {
-                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // germline
-                            1 => {
-                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                germline_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // not present in this haplotype
-                            _ => {}
-                        }
-                    }
-//                    var_pos = format!("{}|{}", var_pos, variants[c as usize].pos());
-//                    p_changes = format!("{}|{}",p_changes,variants[c as usize].prot_change());
-                    if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    // check if variant position is already in the variant_site list
+                    if (c == 0) {
                         n_variantsites += 1;
+                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
+                        if !(variants[c as usize].is_germline()) {
+                            n_som_variantsites += 1;
+                        }
+                    }
+                    else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                        n_variantsites += 1;
+                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {
                             n_som_variantsites += 1;
                         }
@@ -462,11 +421,11 @@ impl ObservationMatrix {
             let somatic_p_changes = somatic_p_changes_vec.join("|");
             let germline_var_pos = germline_var_pos_vec.join("|");
             let germline_p_changes = germline_p_changes_vec.join("|");
-
+            let variantsites_pos = variantsites_pos_vec.join("|");
             // build the info record
             let record = IDRecord {id: fasta_id.to_owned(), chrom: chrom.to_owned(),
-                offset: offset, freq: freq, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
-                nsomvariant_sites: n_som_variantsites as u32,
+                offset: offset, freq: freq, depth, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
+                nsomvariant_sites: n_som_variantsites as u32, variant_sites: variantsites_pos.to_owned(),
                 somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
                 normal_sequence: normal_peptide.to_owned().to_string(), mutant_sequence: neopeptide.to_owned().to_string()};
@@ -518,8 +477,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
     }
     debug!("Reads Tree length: {}", read_tree.len());
-
-    //let max_read_len = 75;
 
     // load variant buffer into BTree
     let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), 0, sequence.len as u32 - 1)?;
@@ -623,9 +580,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if coding_shift % 3 == frameshift {
                     // print haplotypes
                     debug!("Should print haplotypes");
-//                            hap_vec = observations.print_haplotypes(
-//                                gene, transcript, offset, exon.end, exon.start, window_len, refseq, fasta_writer, tsv_writer, prot_writer, only_relevant
-//                            ).unwrap();
                     prev_hap_vec = observations.print_haplotypes(
                         chrom, offset, window_len, sequence.len as u32 -1, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
                     ).unwrap();

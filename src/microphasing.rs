@@ -88,6 +88,7 @@ pub struct IDRecord{
     nvariant_sites: u32,
     nsomvariant_sites: u32,
     strand: String,
+    variant_sites: String,
     somatic_positions: String,
     somatic_aa_change: String,
     germline_positions: String,
@@ -180,7 +181,7 @@ impl IDRecord{
         debug!("nvars {} {}",self.nvar,rec.nvar);
         IDRecord{id: fasta_id, transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
             offset: offset + self.offset, freq: self.freq * rec.freq, depth: self.depth, nvar: nvariants, nsomatic: nsomatic, nvariant_sites: self.nvariant_sites + rec.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
-            strand: self.strand.to_owned(), somatic_positions: s_p_vec.join("|"), somatic_aa_change: s_aa_vec.join("|"), germline_positions: g_p_vec.join("|"), germline_aa_change: g_aa_vec.join("|"),
+            strand: self.strand.to_owned(), variant_sites: self.variant_sites.to_owned() + &rec.variant_sites, somatic_positions: s_p_vec.join("|"), somatic_aa_change: s_aa_vec.join("|"), germline_positions: g_p_vec.join("|"), germline_aa_change: g_aa_vec.join("|"),
             normal_sequence: String::from_utf8(wt_seq).unwrap(), mutant_sequence: String::from_utf8(mt_seq).unwrap()
         }
     }
@@ -199,7 +200,7 @@ impl IDRecord{
         };
         IDRecord{id: self.id.to_owned(), transcript: self.transcript.to_owned(), gene_id: self.gene_id.to_owned(), gene_name: self.gene_name.to_owned(), chrom: self.chrom.to_owned(),
             offset: self.offset, freq: self.freq + freq, depth: self.depth, nvar: new_nvar, nsomatic: new_somatic , nvariant_sites: self.nvariant_sites, nsomvariant_sites: self.nsomvariant_sites,
-            strand: self.strand.to_owned(), somatic_positions: self.somatic_positions.to_owned(), somatic_aa_change: self.somatic_aa_change.to_owned(), germline_positions: self.germline_positions.to_owned(), germline_aa_change: self.germline_aa_change.to_owned(),
+            strand: self.strand.to_owned(), variant_sites: self.variant_sites.to_owned(), somatic_positions: self.somatic_positions.to_owned(), somatic_aa_change: self.somatic_aa_change.to_owned(), germline_positions: self.germline_positions.to_owned(), germline_aa_change: self.germline_aa_change.to_owned(),
             normal_sequence: self.normal_sequence.to_owned(), mutant_sequence: self.mutant_sequence.to_owned()
         }
     }
@@ -506,50 +507,36 @@ impl ObservationMatrix {
             // position of the variant
             let mut somatic_var_pos_vec = Vec::new();
             let mut germline_var_pos_vec = Vec::new();
+            let mut variantsites_pos_vec = Vec::new();
             // gather information iterating over the variants
             debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
-                if c == 0 {
-                    if c < variant_profile.len() as u32 {
-                        match variant_profile[0] {
-                            // somatic
-                            2 => {
-                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // germline
-                            1 => {
-                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                germline_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // not present in this haplotype
-                            _ => {}
-                        }
+                if c < variant_profile.len() as u32 {
+                    match variant_profile[c as usize] {
+                        // somatic
+                        2 => {
+                            somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            somatic_p_changes_vec.push(variants[c as usize].prot_change());
+                        },
+                        // germline
+                        1 => {
+                            germline_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            germline_p_changes_vec.push(variants[c as usize].prot_change());
+                        },
+                        // not present in this haplotype
+                        _ => {}
                     }
-                    n_variantsites += 1;
-                    if !(variants[0].is_germline()) {
-                        n_som_variantsites += 1;
-                    }
-                }
-                else {
-                    if c < variant_profile.len() as u32 {
-                        match variant_profile[c as usize] {
-                            // somatic
-                            2 => {
-                                somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                somatic_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // germline
-                            1 => {
-                                germline_var_pos_vec.push(variants[c as usize].pos().to_string());
-                                germline_p_changes_vec.push(variants[c as usize].prot_change());
-                            },
-                            // not present in this haplotype
-                            _ => {}
-                        }
-                    }
-                    if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    // check if variant position is already in the variant_site list
+                    if (c == 0) {
                         n_variantsites += 1;
+                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
+                        if !(variants[c as usize].is_germline()) {
+                            n_som_variantsites += 1;
+                        }
+                    }
+                    else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                        n_variantsites += 1;
+                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {
                             n_som_variantsites += 1;
                         }
@@ -562,12 +549,13 @@ impl ObservationMatrix {
             let somatic_p_changes = somatic_p_changes_vec.join("|");
             let germline_var_pos = germline_var_pos_vec.join("|");
             let germline_p_changes = germline_p_changes_vec.join("|");
+            let variantsites_pos = variantsites_pos_vec.join("|");
 
             // build the info record
             let record = IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
                 gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
                 offset: offset, freq: freq, depth: depth, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
-                nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
+                nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), variant_sites: variantsites_pos.to_owned(),
                 somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
                 normal_sequence: normal_peptide.to_owned().to_string(), mutant_sequence: neopeptide.to_owned().to_string()};
@@ -623,7 +611,7 @@ impl ObservationMatrix {
             let mut hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
                 gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
                 offset: offset, freq: freq, depth: depth, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
-                nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
+                nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), variant_sites: variantsites_pos.to_owned(),
                 somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
                 normal_sequence: normal_peptide.to_owned().to_string(), mutant_sequence: neopeptide.to_owned().to_string()}};
@@ -640,7 +628,7 @@ impl ObservationMatrix {
                 hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(),
                     gene_name: gene.name.to_owned(), chrom: gene.chrom.to_owned(),
                     offset: offset, freq: freq, depth: depth, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
-                    nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
+                    nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), variant_sites: variantsites_pos.to_owned(),
                     somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
                     normal_sequence: String::from_utf8_lossy(&new_normal).to_string(), mutant_sequence: String::from_utf8_lossy(&newseq).to_string()}};
@@ -658,7 +646,7 @@ impl ObservationMatrix {
                 hap_seq = HaplotypeSeq {sequence: Vec::new(), record: IDRecord {id: fasta_id.to_owned(), transcript: transcript.id.to_owned(), gene_id: gene.id.to_owned(), gene_name: gene.name.to_owned(),
                     chrom: gene.chrom.to_owned(), offset: offset,
                     freq: freq, depth: depth, nvar: n_variants, nsomatic: n_somatic, nvariant_sites: n_variantsites as u32,
-                    nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(),
+                    nsomvariant_sites: n_som_variantsites as u32, strand: strand.to_string(), variant_sites: variantsites_pos.to_owned(),
                     somatic_positions: somatic_var_pos.to_owned(), somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(), germline_aa_change: germline_p_changes.to_owned(),
                     normal_sequence: String::from_utf8_lossy(&new_normal).to_string(), mutant_sequence: String::from_utf8_lossy(&newseq).to_string()}};
