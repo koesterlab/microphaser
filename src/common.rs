@@ -1,17 +1,17 @@
-use std::str;
-use std::error::Error;
 use std::cmp::Ordering;
 
 use bio_types::strand::Strand;
+
+use std::error::Error;
+use std::str;
 
 use rust_htslib::bcf;
 
 use std::borrow::ToOwned;
 
-
 #[derive(Debug)]
 pub struct Annotation {
-    pub prot_change: String
+    pub prot_change: String,
 }
 
 impl Annotation {
@@ -23,22 +23,33 @@ impl Annotation {
         };
         let pc = match info {
             "" => "".to_string(),
-            _ => info.split('|').nth(10).unwrap().to_string()
-        };//info.split('|').nth(10).unwrap().to_string();
-        Annotation {
-            prot_change: pc
-        }
+            _ => info.split('|').nth(10).unwrap().to_string(),
+        }; //info.split('|').nth(10).unwrap().to_string();
+        Annotation { prot_change: pc }
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum Variant {
-    SNV { pos: u32, alt: u8, is_germline: bool, prot_change: String },
-    Insertion { pos: u32, seq: Vec<u8>, is_germline: bool, prot_change: String },
-    Deletion { pos: u32, len: u32, is_germline: bool, prot_change: String }
+    SNV {
+        pos: u32,
+        alt: u8,
+        is_germline: bool,
+        prot_change: String,
+    },
+    Insertion {
+        pos: u32,
+        seq: Vec<u8>,
+        is_germline: bool,
+        prot_change: String,
+    },
+    Deletion {
+        pos: u32,
+        len: u32,
+        is_germline: bool,
+        prot_change: String,
+    },
 }
-
 
 impl Variant {
     pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
@@ -54,46 +65,43 @@ impl Variant {
         let mut _alleles = Vec::with_capacity(alleles.len() - 1);
         for a in &alleles[1..] {
             if a.len() == 1 && refallele.len() > 1 {
-                _alleles.push(
-                        Variant::Deletion {
-                        pos: pos,
-                        len: (refallele.len() - 1) as u32,
-                        is_germline: is_germline,
-                        prot_change: prot_change.to_owned()
-                    }
-                );
+                _alleles.push(Variant::Deletion {
+                    pos: pos,
+                    len: (refallele.len() - 1) as u32,
+                    is_germline: is_germline,
+                    prot_change: prot_change.to_owned(),
+                });
             } else if a.len() > 1 && refallele.len() == 1 {
                 _alleles.push(Variant::Insertion {
                     pos: pos,
                     seq: a[0..].to_owned(),
                     is_germline: is_germline,
-                    prot_change: prot_change.to_owned()
+                    prot_change: prot_change.to_owned(),
                 });
             } else if a.len() == 1 && refallele.len() == 1 {
                 _alleles.push(Variant::SNV {
                     pos: pos,
                     alt: a[0],
                     is_germline: is_germline,
-                    prot_change: prot_change.to_owned()
+                    prot_change: prot_change.to_owned(),
                 });
             } else {
                 warn!(
                     "Unsupported variant {} -> {}",
-                    str::from_utf8(refallele).unwrap(), str::from_utf8(a).unwrap()
+                    str::from_utf8(refallele).unwrap(),
+                    str::from_utf8(a).unwrap()
                 );
             }
-
         }
 
         Ok(_alleles)
     }
 
-
     pub fn pos(&self) -> u32 {
         match self {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, .. } => pos,
-            &Variant::Insertion { pos, .. } => pos
+            &Variant::Insertion { pos, .. } => pos,
         }
     }
 
@@ -101,7 +109,7 @@ impl Variant {
         match self {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, len, .. } => pos + len - 1,
-            &Variant::Insertion { pos, .. } => pos
+            &Variant::Insertion { pos, .. } => pos,
         }
     }
 
@@ -109,15 +117,21 @@ impl Variant {
         match self {
             &Variant::SNV { is_germline, .. } => is_germline,
             &Variant::Deletion { is_germline, .. } => is_germline,
-            &Variant::Insertion { is_germline, .. } => is_germline
+            &Variant::Insertion { is_germline, .. } => is_germline,
         }
     }
 
     pub fn prot_change(&self) -> String {
         match self {
-            &Variant::SNV { ref prot_change, .. } => prot_change.to_owned(),
-            &Variant::Deletion { ref prot_change, .. } => prot_change.to_owned(),
-            &Variant::Insertion { ref prot_change, .. } => prot_change.to_owned()
+            &Variant::SNV {
+                ref prot_change, ..
+            } => prot_change.to_owned(),
+            &Variant::Deletion {
+                ref prot_change, ..
+            } => prot_change.to_owned(),
+            &Variant::Insertion {
+                ref prot_change, ..
+            } => prot_change.to_owned(),
         }
     }
 
@@ -125,12 +139,10 @@ impl Variant {
         match self {
             &Variant::SNV { .. } => 0,
             &Variant::Deletion { len, .. } => len % 3,
-            &Variant::Insertion { ref seq, .. } => seq.len() as u32 % 3
+            &Variant::Insertion { ref seq, .. } => seq.len() as u32 % 3,
         }
     }
-
 }
-
 
 #[derive(Debug)]
 pub struct Gene {
@@ -139,9 +151,8 @@ pub struct Gene {
     pub transcripts: Vec<Transcript>,
     pub interval: Interval,
     pub chrom: String,
-    pub biotype: String
+    pub biotype: String,
 }
-
 
 impl Gene {
     pub fn new(id: &str, name: &str, chrom: &str, interval: Interval, biotype: &str) -> Self {
@@ -151,7 +162,7 @@ impl Gene {
             transcripts: Vec::new(),
             chrom: chrom.to_owned(),
             interval: interval,
-            biotype: biotype.to_owned()
+            biotype: biotype.to_owned(),
         }
     }
 
@@ -170,14 +181,12 @@ pub enum PhasingStrand {
     Reverse,
 }
 
-impl From<Strand> for PhasingStrand{
+impl From<Strand> for PhasingStrand {
     fn from(strand: Strand) -> Self {
         let s = match strand {
             Strand::Forward => PhasingStrand::Forward,
             Strand::Reverse => PhasingStrand::Reverse,
-            _ => panic!(
-                "Unsupported Strand orientation! Only Forward (+) and Reverse(-) allowed"
-            ),
+            _ => panic!("Unsupported Strand orientation! Only Forward (+) and Reverse(-) allowed"),
         };
         s
     }
@@ -190,7 +199,6 @@ pub struct Transcript {
     pub exons: Vec<Interval>,
 }
 
-
 impl Transcript {
     pub fn new(id: &str, strand: PhasingStrand) -> Self {
         Transcript {
@@ -199,16 +207,15 @@ impl Transcript {
             exons: Vec::new(),
         }
     }
-    pub fn is_coding(&self) -> bool{
+    pub fn is_coding(&self) -> bool {
         return !(self.exons.is_empty());
     }
 }
 
-
 #[derive(Debug)]
 pub struct Interval {
     pub start: u32,
-    pub end: u32
+    pub end: u32,
 }
 
 impl Ord for Interval {
@@ -233,7 +240,7 @@ impl Eq for Interval {}
 
 impl Clone for Interval {
     fn clone(&self) -> Interval {
-    *self
+        *self
     }
 }
 
@@ -243,11 +250,7 @@ impl Interval {
     pub fn new(start: u32, end: u32) -> Self {
         Interval {
             start: start,
-            end: end
+            end: end,
         }
     }
 }
-
-
-
-

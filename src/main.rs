@@ -1,39 +1,35 @@
 #[macro_use]
 extern crate log;
-extern crate fern;
 extern crate env_logger;
+extern crate fern;
 #[macro_use]
 extern crate clap;
-extern crate vec_map;
 extern crate bio;
+extern crate csv;
 extern crate itertools;
 extern crate rust_htslib;
-extern crate csv;
+extern crate vec_map;
 #[macro_use]
 extern crate serde_derive;
 extern crate sha1;
 
-use std::process;
 use std::error::Error;
-use std::io;
 use std::fs::File;
+use std::io;
+use std::process;
 
+use clap::{App, ArgMatches, SubCommand};
 
-
-use clap::{ArgMatches, App, SubCommand};
-
-use rust_htslib::{bam, bcf};
 use bio::io::{fasta, gff};
+use rust_htslib::{bam, bcf};
 
-pub mod microphasing;
-pub mod common;
-pub mod normal_microphasing;
-pub mod filter;
 pub mod build_reference;
+pub mod common;
+pub mod filter;
 pub mod microphasing_wholegenome;
 pub mod peptides;
-
-
+pub mod microphasing;
+pub mod normal_microphasing;
 
 pub fn run() -> Result<(), Box<Error>> {
     let yaml = load_yaml!("cli.yaml");
@@ -59,26 +55,21 @@ pub fn run() -> Result<(), Box<Error>> {
         ("whole_genome", Some(m)) => run_wg(m),
         _ => Ok(())
     }
-
 }
 
 pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
     fern::Dispatch::new()
-                   .format(|out, message, _| out.finish(format_args!("{}", message)))
-                   .level(
-                       if matches.is_present("verbose") {
-                           log::LevelFilter::Debug
-                       } else {
-                           log::LevelFilter::Info
-                       }
-                   )
-                   .chain(std::io::stderr())
-                   .apply().unwrap();
+        .format(|out, message, _| out.finish(format_args!("{}", message)))
+        .level(if matches.is_present("verbose") {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .chain(std::io::stderr())
+        .apply()
+        .unwrap();
 
-
-    let mut gtf_reader = gff::Reader::new(
-        io::stdin(), gff::GffType::GTF2
-    );
+    let mut gtf_reader = gff::Reader::new(io::stdin(), gff::GffType::GTF2);
 
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
 
@@ -92,32 +83,37 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
 
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
 
-    let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsv").unwrap())?;
+    let mut tsv_writer = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
-        &mut fasta_reader, &mut gtf_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, &mut tsv_writer, &mut normal_writer, window_len, only_relevant
+        &mut fasta_reader,
+        &mut gtf_reader,
+        bcf_reader,
+        bam_reader,
+        &mut fasta_writer,
+        &mut tsv_writer,
+        &mut normal_writer,
+        window_len,
+        only_relevant,
     )
 }
 
 pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
     fern::Dispatch::new()
-                   .format(|out, message, _| out.finish(format_args!("{}", message)))
-                   .level(
-                       if matches.is_present("verbose") {
-                           log::LevelFilter::Debug
-                       } else {
-                           log::LevelFilter::Info
-                       }
-                   )
-                   .chain(std::io::stderr())
-                   .apply().unwrap();
+        .format(|out, message, _| out.finish(format_args!("{}", message)))
+        .level(if matches.is_present("verbose") {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .chain(std::io::stderr())
+        .apply()
+        .unwrap();
 
-
-    let mut gtf_reader = gff::Reader::new(
-        io::stdin(), gff::GffType::GTF2
-    );
+    let mut gtf_reader = gff::Reader::new(io::stdin(), gff::GffType::GTF2);
 
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("normal-sample").unwrap())?;
 
@@ -129,23 +125,26 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
 
     let window_len = value_t!(matches, "window-len", u32)?;
     normal_microphasing::phase(
-        &mut fasta_reader, &mut gtf_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, window_len
+        &mut fasta_reader,
+        &mut gtf_reader,
+        bcf_reader,
+        bam_reader,
+        &mut fasta_writer,
+        window_len,
     )
 }
 
 pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
     fern::Dispatch::new()
-               .format(|out, message, _| out.finish(format_args!("{}", message)))
-               .level(
-                   if matches.is_present("verbose") {
-                       log::LevelFilter::Debug
-                   } else {
-                       log::LevelFilter::Info
-                   }
-               )
-               .chain(std::io::stderr())
-               .apply().unwrap();
+        .format(|out, message, _| out.finish(format_args!("{}", message)))
+        .level(if matches.is_present("verbose") {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .chain(std::io::stderr())
+        .apply()
+        .unwrap();
 
     let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
     let binary_writer = File::create(&matches.value_of("output").unwrap())?;
@@ -155,26 +154,35 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
 
 pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
     fern::Dispatch::new()
-                   .format(|out, message, _| out.finish(format_args!("{}", message)))
-                   .level(
-                       if matches.is_present("verbose") {
-                           log::LevelFilter::Debug
-                       } else {
-                           log::LevelFilter::Info
-                       }
-                   )
-                   .chain(std::io::stderr())
-                   .apply().unwrap();
+        .format(|out, message, _| out.finish(format_args!("{}", message)))
+        .level(if matches.is_present("verbose") {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .chain(std::io::stderr())
+        .apply()
+        .unwrap();
 
     let reference_reader = File::open(&matches.value_of("reference").unwrap())?;
-    let mut tsv_reader = csv::ReaderBuilder::new().delimiter(b'\t').from_path(&matches.value_of("tsv").unwrap())?;
 
-    let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsvoutput").unwrap())?;
+    let mut tsv_reader = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .from_path(&matches.value_of("tsv").unwrap())?;
+
+    let mut tsv_writer = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(matches.value_of("tsvoutput").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
-    peptides::filter(reference_reader, &mut tsv_reader, &mut fasta_writer,
-         &mut normal_writer, &mut tsv_writer)
+    peptides::filter(
+        reference_reader,
+        &mut tsv_reader,
+        &mut fasta_writer,
+        &mut normal_writer,
+        &mut tsv_writer,
+    )
 }
 
 pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<Error>> {
@@ -214,7 +222,6 @@ pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<Error>> {
 }
 
 pub fn main() {
-
     if let Err(e) = run() {
         error!("{}", e);
         process::exit(1);

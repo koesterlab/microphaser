@@ -1,16 +1,15 @@
 use std::error::Error;
-use std::io;
 use std::fs;
+use std::io;
 
 use std::collections::{HashMap, HashSet};
 
-use bio::io::fasta;
-use bio::alphabets;
 use alphabets::dna;
+use bio::alphabets;
+use bio::io::fasta;
 
 extern crate bincode;
 use bincode::serialize_into;
-
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
     // data structure for mapping codons to amino acids
@@ -51,11 +50,11 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
     let map = make_pairs();
     match map.get(v) {
         Some(aa) => Ok(aa),
-        None => Err(())
+        None => Err(()),
     }
 }
 
-fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
+fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
     let case_seq = s.to_ascii_uppercase();
     let mut r = case_seq.to_vec();
     // reverse complement the sequence if the transcript is in reverse orientation
@@ -88,13 +87,12 @@ pub fn build<F: io::Read>(
         // check if peptide is in forward or reverse orientation
         let frame = match id.ends_with("F") {
             true => 1,
-            false => -1
+            false => -1,
         };
         debug!("{}", String::from_utf8_lossy(seq));
         debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
         let pepseq = to_protein(seq, frame).unwrap();
         ref_set.insert(pepseq);
-
     }
     // save as binary
     serialize_into(binary_writer, &ref_set)?;
