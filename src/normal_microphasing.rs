@@ -17,7 +17,6 @@ use rust_htslib::{bam, bcf};
 use bio_types::strand::Strand;
 
 use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand};
-use crate::common::{Gene, Interval, PhasingStrand, Transcript, Variant};
 
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
@@ -478,7 +477,6 @@ impl ObservationMatrix {
             // gather information iterating over the variants
             debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
-<<<<<<< HEAD
                 if c < variant_profile.len() as u32 {
                     match variant_profile[c as usize] {
                         // somatic

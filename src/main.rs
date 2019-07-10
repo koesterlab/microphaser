@@ -79,8 +79,6 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
 
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
-    let only_relevant = matches.is_present("relevant");
-
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
 
     let mut tsv_writer = csv::WriterBuilder::new()
@@ -97,7 +95,6 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
         &mut tsv_writer,
         &mut normal_writer,
         window_len,
-        only_relevant,
     )
 }
 

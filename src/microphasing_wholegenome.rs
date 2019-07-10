@@ -2,6 +2,7 @@ use std::error::Error;
 use std::collections::{VecDeque, BTreeMap};
 use std::io;
 use std::fs;
+use std::cmp;
 
 use csv;
 use sha1;
@@ -336,7 +337,7 @@ impl ObservationMatrix {
                             }
                             // counting total number of variants
                             n_variants += 1;
-                            
+
                             j += 1;
                         } else {
                             variant_profile.push(0);
@@ -455,124 +456,246 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     refseq: &mut Vec<u8>,
     only_relevant: bool
 ) -> Result<(), Box<Error>> {
-    fasta_reader.fetch(&sequence.name, 0 as u64, sequence.len - 1)?;
-    fasta_reader.read(refseq)?;
-    let mut variant_tree = BTreeMap::new();
-    let mut read_tree = BTreeMap::new();
-    debug!("Start Phasing");
-    read_buffer.fetch(&sequence.name.as_bytes(), 0, sequence.len as u32- 1)?;
-    let chrom = &sequence.name;
-    let mut max_read_len = 50 as u32;
-    // load read buffer into BTree
-    for rec in read_buffer.iter() {
-        if rec.seq().len() as u32 > max_read_len {
-        max_read_len = rec.seq().len() as u32;}
-        read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
-    }
-    debug!("Reads Tree length: {}", read_tree.len());
-
-    // load variant buffer into BTree
-    let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), 0, sequence.len as u32 - 1)?;
-    let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
-
-
-
-    let mut observations = ObservationMatrix::new();
-    let mut frameshifts = BTreeMap::new();
-    frameshifts.insert(0, 0);
-    let mut offset = 0;
-    let mut old_offset = offset;
-    loop {
-        let valid = offset + window_len <= sequence.len  as u32 - 1;
-        if !valid {
-            break;
+    let mut chunk = 0;
+    while chunk < sequence.len - 1000000 {
+        fasta_reader.fetch(&sequence.name, chunk, cmp::min(chunk + 1000000, sequence.len - 1))?;
+        fasta_reader.read(refseq)?;
+        let mut variant_tree = BTreeMap::new();
+        let mut read_tree = BTreeMap::new();
+        debug!("Start Phasing");
+        read_buffer.fetch(&sequence.name.as_bytes(), chunk as u32, chunk as u32 + 1000000)?;
+        let chrom = &sequence.name;
+        let mut max_read_len = 50 as u32;
+        // load read buffer into BTree
+        for rec in read_buffer.iter() {
+            if rec.seq().len() as u32 > max_read_len {
+            max_read_len = rec.seq().len() as u32;}
+            read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
         }
-        debug!("Offset {}, old offset {}", offset, old_offset);
-        // advance window to next position
-        let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
-        debug!("Variants in window: {}",nvars);
-        // first window in the exon, all variants found are newly added
-        let added_vars = if offset == old_offset {
-            nvars
-        // if we advance the window (forward or reverse), just the newly added variants are counted
-        } else {
-            Itertools::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
-        };
+        debug!("Reads Tree length: {}", read_tree.len());
 
-        // first window, no variants are deleted
-        let deleted_vars = if offset == old_offset {
-            0
-        } else {
-            Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
-        };
+        // load variant buffer into BTree
+        let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), chunk as u32, chunk as u32 + 1000000)?;
+        let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
 
-        debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
-        let reads = {
-            // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
-            if offset == 0 {
-                Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
+
+
+        let mut observations = ObservationMatrix::new();
+        let mut frameshifts = BTreeMap::new();
+        frameshifts.insert(0, 0);
+        let mut offset = chunk as u32;
+        let mut old_offset = offset;
+        loop {
+            let valid = offset + window_len <= chunk  as u32 + 1000000;
+            if !valid {
+                break;
             }
-            // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
-            else {
-                Itertools::flatten(read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1)).collect_vec()
-            }
-        };
+            debug!("Offset {}, old offset {}", offset, old_offset);
+            // advance window to next position
+            let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
+            debug!("Variants in window: {}",nvars);
+            // first window in the exon, all variants found are newly added
+            let added_vars = if offset == old_offset {
+                nvars
+            // if we advance the window (forward or reverse), just the newly added variants are counted
+            } else {
+                Itertools::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
+            };
+
+            // first window, no variants are deleted
+            let deleted_vars = if offset == old_offset {
+                0
+            } else {
+                Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
+            };
+
+            debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
+            let reads = {
+                // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
+                if offset == 0 {
+                    Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
+                }
+                // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
+                else {
+                    Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
+                }
+            };
 
 
 
-        debug!("Variants added: {}", added_vars);
-        debug!("Variants deleted: {}", deleted_vars);
-        {
-            // delete rows
-            observations.cleanup_reads(offset + window_len);
-            // delete columns
-            observations.shrink_left(deleted_vars);
+            debug!("Variants added: {}", added_vars);
+            debug!("Variants deleted: {}", deleted_vars);
+            {
+                // delete rows
+                observations.cleanup_reads(offset + window_len);
+                // delete columns
+                observations.shrink_left(deleted_vars);
 
-            // add new reads
-            debug!("Reads: {}", reads.len());
-            for read in reads {
-                observations.push_read(read.clone(), offset + window_len, offset)?;
-            }
+                // add new reads
+                debug!("Reads: {}", reads.len());
+                for read in reads {
+                    observations.push_read(read.clone(), offset + window_len, offset)?;
+                }
 
 
-            // collect variants
-            let variants = Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)
-                ).map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec();
-            debug!("Variants(after deleting and adding): {}", variants.len());
-            // determine frameshifts
-            for variant in &variants {
-                debug!("Variants!");
-                debug!("Variant Pos: {}", variant.pos());
-                let s = variant.frameshift();
-                if s > 0 {
-                    let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
-                    for s_ in previous {
-                        frameshifts.insert(variant.end_pos(), s + s_);
+                // collect variants
+                let variants = Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)
+                    ).map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec();
+                debug!("Variants(after deleting and adding): {}", variants.len());
+                // determine frameshifts
+                for variant in &variants {
+                    debug!("Variants!");
+                    debug!("Variant Pos: {}", variant.pos());
+                    let s = variant.frameshift();
+                    if s > 0 {
+                        let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
+                        for s_ in previous {
+                            frameshifts.insert(variant.end_pos(), s + s_);
+                        }
                     }
                 }
-            }
 
-            // add columns
-            observations.extend_right(variants)?;
+                // add columns
+                observations.extend_right(variants)?;
 
-            for (_, &frameshift) in frameshifts.range(..offset) {
-                // possible shift if exon starts with the rest of a split codon (splicing)
-                let coding_shift = offset;
-                debug!("Offset - Exonstart % 3: {}", coding_shift % 3);
-                debug!("Shift: {}", frameshift);
-                if coding_shift % 3 == frameshift {
-                    // print haplotypes
-                    debug!("Should print haplotypes");
-                    observations.print_haplotypes(
-                        chrom, offset, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
-                    ).unwrap();
+                for (_, &frameshift) in frameshifts.range(..offset) {
+                    // possible shift if exon starts with the rest of a split codon (splicing)
+                    let coding_shift = offset;
+                    debug!("Offset - Exonstart % 3: {}", coding_shift % 3);
+                    debug!("Shift: {}", frameshift);
+                    if coding_shift % 3 == frameshift {
+                        // print haplotypes
+                        debug!("Should print haplotypes");
+                        observations.print_haplotypes(
+                            chrom, offset, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
+                        ).unwrap();
+                    }
                 }
-            }
 
-            old_offset = offset;
-            offset += 1;
+                old_offset = offset;
+                offset += 1;
+            }
         }
+        chunk += 1000000;
     }
+    // fasta_reader.fetch(&sequence.name, 0 as u64, sequence.len - 1)?;
+    // fasta_reader.read(refseq)?;
+    // let mut variant_tree = BTreeMap::new();
+    // let mut read_tree = BTreeMap::new();
+    // debug!("Start Phasing");
+    // read_buffer.fetch(&sequence.name.as_bytes(), 0, sequence.len as u32- 1)?;
+    // let chrom = &sequence.name;
+    // let mut max_read_len = 50 as u32;
+    // // load read buffer into BTree
+    // for rec in read_buffer.iter() {
+    //     if rec.seq().len() as u32 > max_read_len {
+    //     max_read_len = rec.seq().len() as u32;}
+    //     read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
+    // }
+    // debug!("Reads Tree length: {}", read_tree.len());
+    //
+    // // load variant buffer into BTree
+    // let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), 0, sequence.len as u32 - 1)?;
+    // let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
+    //
+    //
+    //
+    // let mut observations = ObservationMatrix::new();
+    // let mut frameshifts = BTreeMap::new();
+    // frameshifts.insert(0, 0);
+    // let mut offset = 0;
+    // let mut old_offset = offset;
+    // loop {
+    //     let valid = offset + window_len <= sequence.len  as u32 - 1;
+    //     if !valid {
+    //         break;
+    //     }
+    //     debug!("Offset {}, old offset {}", offset, old_offset);
+    //     // advance window to next position
+    //     let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
+    //     debug!("Variants in window: {}",nvars);
+    //     // first window in the exon, all variants found are newly added
+    //     let added_vars = if offset == old_offset {
+    //         nvars
+    //     // if we advance the window (forward or reverse), just the newly added variants are counted
+    //     } else {
+    //         Itertools::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
+    //     };
+    //
+    //     // first window, no variants are deleted
+    //     let deleted_vars = if offset == old_offset {
+    //         0
+    //     } else {
+    //         Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
+    //     };
+    //
+    //     debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
+    //     let reads = {
+    //         // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
+    //         if offset == 0 {
+    //             Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
+    //         }
+    //         // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
+    //         else {
+    //             Itertools::flatten(read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1)).collect_vec()
+    //         }
+    //     };
+    //
+    //
+    //
+    //     debug!("Variants added: {}", added_vars);
+    //     debug!("Variants deleted: {}", deleted_vars);
+    //     {
+    //         // delete rows
+    //         observations.cleanup_reads(offset + window_len);
+    //         // delete columns
+    //         observations.shrink_left(deleted_vars);
+    //
+    //         // add new reads
+    //         debug!("Reads: {}", reads.len());
+    //         for read in reads {
+    //             observations.push_read(read.clone(), offset + window_len, offset)?;
+    //         }
+    //
+    //
+    //         // collect variants
+    //         let variants = Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)
+    //             ).map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec();
+    //         debug!("Variants(after deleting and adding): {}", variants.len());
+    //         // determine frameshifts
+    //         for variant in &variants {
+    //             debug!("Variants!");
+    //             debug!("Variant Pos: {}", variant.pos());
+    //             let s = variant.frameshift();
+    //             if s > 0 {
+    //                 let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
+    //                 for s_ in previous {
+    //                     frameshifts.insert(variant.end_pos(), s + s_);
+    //                 }
+    //             }
+    //         }
+    //
+    //         // add columns
+    //         observations.extend_right(variants)?;
+    //
+    //         for (_, &frameshift) in frameshifts.range(..offset) {
+    //             // possible shift if exon starts with the rest of a split codon (splicing)
+    //             let coding_shift = offset;
+    //             debug!("Offset - Exonstart % 3: {}", coding_shift % 3);
+    //             debug!("Shift: {}", frameshift);
+    //             if coding_shift % 3 == frameshift {
+    //                 // print haplotypes
+    //                 debug!("Should print haplotypes");
+    //                 observations.print_haplotypes(
+    //                     chrom, offset, window_len, refseq, fasta_writer, tsv_writer, normal_writer, only_relevant
+    //                 ).unwrap();
+    //             }
+    //         }
+    //
+    //         old_offset = offset;
+    //         offset += 1;
+    //     }
+    // }
     Ok(())
 }
 

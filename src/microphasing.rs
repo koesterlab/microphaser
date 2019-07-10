@@ -371,6 +371,10 @@ impl ObservationMatrix {
             "Read Start: {}, Read End: {} - Window Start: {}, Window End {}",
             start_pos, end_pos, interval_start, interval_end
         );
+        debug!(
+            "Read {} added",
+            String::from_utf8_lossy(read.qname())
+        );
         if end_pos >= interval_end && start_pos <= interval_start {
             // only insert if end_pos is larger than the interval end
             let mut obs = Observation {
@@ -413,7 +417,6 @@ impl ObservationMatrix {
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
-        only_relevant: bool,
     ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
@@ -598,7 +601,6 @@ impl ObservationMatrix {
             // gather information iterating over the variants
             debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
-<<<<<<< HEAD
                 if c < variant_profile.len() as u32 {
                     match variant_profile[c as usize] {
                         // somatic
@@ -821,16 +823,6 @@ impl ObservationMatrix {
 
             haplotypes_vec.push(hap_seq);
 
-            debug!(
-                "relevant_check: {}, nvar: {}, freq: {} ",
-                !(only_relevant),
-                record.nvar > 0,
-                record.freq < 1.00
-            );
-            debug!(
-                "is_relevant: {}",
-                !(only_relevant) || record.freq < 1.00 || record.nvar > 0
-            );
             // write neopeptides, information and matching normal peptide to files
             if record.nsomatic > 0 {
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
@@ -859,7 +851,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     refseq: &mut Vec<u8>,
-    only_relevant: bool,
 ) -> Result<(), Box<Error>> {
     // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
     let end_overflow = 100;
@@ -1025,7 +1016,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                     else {
                         Itertools::flatten(
-                            read_tree.range((offset - 1)..(offset + 1)).map(|rec| rec.1),
+                            read_tree.range((offset)..(offset + 1)).map(|rec| rec.1),
                         )
                         .collect_vec()
                     }
@@ -1123,7 +1114,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         fasta_writer,
                                         tsv_writer,
                                         normal_writer,
-                                        only_relevant,
                                     )
                                     .unwrap();
                             } else {
@@ -1139,7 +1129,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         fasta_writer,
                                         tsv_writer,
                                         normal_writer,
-                                        only_relevant,
                                     )
                                     .unwrap();
                             }
@@ -1307,7 +1296,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     tsv_writer: &mut csv::Writer<fs::File>,
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
-    only_relevant: bool,
 ) -> Result<(), Box<Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader);
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
@@ -1328,7 +1316,6 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     normal_writer,
                     window_len,
                     &mut refseq,
-                    only_relevant,
                 )?;
             }
         }

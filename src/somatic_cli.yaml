@@ -35,10 +35,6 @@ args:
       short: t
       default_value: "info.tsv"
       help: TSV output for further information on haplotype IDs
-  - relevant:
-      long: only-relevant
-      short: o
-      help: Output only relevant haplotypes (spanning over variant positions)
   - normal:
       long: normaloutput
       short: n
