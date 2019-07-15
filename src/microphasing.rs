@@ -865,7 +865,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     debug!("Start Phasing");
     read_buffer.fetch(&gene.chrom.as_bytes(), gene.start(), gene.end())?;
 
-    let mut max_read_len = 50 as u32;
+    let mut max_read_len = 0 as u32;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
         if rec.seq().len() as u32 > max_read_len {
@@ -876,6 +876,14 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             .or_insert_with(|| Vec::new())
             .push(rec.clone())
     }
+
+    // if max_read_len is zero, there are no reads - break
+    // if max_read_len == 0 {
+    //     return Ok(())
+    // } TODO: Think about ending here
+
+    // if the fixed window_len is to large, set it to read length
+
     debug!("Reads Tree length: {}", read_tree.len());
 
     // load variant buffer into BTree
@@ -904,8 +912,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         for exon in &transcript.exons {
-            debug!("Exon Start: {}", exon.start);
-            debug!("Exon End: {}", exon.end);
+            println!("Exon Start: {}", exon.start);
+            println!("Exon End: {}", exon.end);
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let current_exon_offset = match exon_rest {
                 0 => 0,
@@ -929,7 +937,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if !valid {
                     break;
                 }
-                debug!("Offset {}, old offset {}", offset, old_offset);
+                if max_read_len < window_len {
+                    break;
+                }
+                println!("Offset {}, old offset {}", offset, old_offset);
                 // advance window to next position
                 let nvars = Itertools::flatten(
                     variant_tree
@@ -939,7 +950,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 .count();
                 // store number of variants in window in case it is the last window for this exon
                 last_window_vars = nvars;
-                debug!("Variants in window: {}", nvars);
+                println!("Variants in window: {}", nvars);
                 // first window in the exon, all variants found are newly added
                 let added_vars = if offset == old_offset {
                     nvars
@@ -976,10 +987,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     .count()
                 };
 
-                debug!(
-                    "Offset: {} - max_read_len - window_len {}",
+                println!(
+                    "Offset: {} - max_read_len {} - window_len {}",
                     offset,
-                    (max_read_len - window_len)
+                    max_read_len,
+                    window_len
                 );
                 let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window

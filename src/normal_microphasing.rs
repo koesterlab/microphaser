@@ -691,6 +691,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if !valid {
                     break;
                 }
+                if max_read_len < window_len {
+                    break;
+                }
                 debug!("Offset {}, old offset {}", offset, old_offset);
                 // advance window to next position
                 let nvars = Itertools::flatten(
