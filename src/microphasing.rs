@@ -260,7 +260,8 @@ pub struct Observation {
 impl Observation {
     pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<Error>> {
         debug!(
-            "Read pos {} ; variant pos {}",
+            "Read name {} ; Read pos {} ; variant pos {}",
+            String::from_utf8_lossy(self.read.qname()),
             self.read.pos() as u32,
             variant.pos()
         );
@@ -314,10 +315,13 @@ impl ObservationMatrix {
         if k > 0 {
             for obs in Itertools::flatten(self.observations.values_mut()) {
                 obs.haplotype <<= k;
+                debug!("{}", String::from_utf8_lossy(obs.read.qname()));
+                debug!("{}", obs.haplotype)
             }
         }
         for obs in Itertools::flatten(self.observations.values_mut()) {
             for (i, variant) in new_variants.iter().rev().enumerate() {
+                debug!("Checking new variant support in existing Reads");
                 obs.update_haplotype(i, variant)?;
             }
         }
@@ -332,7 +336,13 @@ impl ObservationMatrix {
             "Number of reads(before removal): {}",
             self.observations.len()
         );
-        let observations = self.observations.split_off(&interval_end);
+        let mut observations = self.observations.split_off(&interval_end);
+        for obs in Itertools::flatten(observations.values_mut()) {
+            debug!("Removed {}", String::from_utf8_lossy(obs.read.qname()));
+        }
+        for obs in Itertools::flatten(self.observations.values_mut()) {
+            debug!("Kept {}", String::from_utf8_lossy(obs.read.qname()));
+        }
         if !reverse {
             self.observations = observations; //self.observations.split_off(&interval_end);
         }
@@ -342,12 +352,13 @@ impl ObservationMatrix {
         );
     }
 
-    /// Check if read has already been added to observations - deprecated
+    /// Check if read has already been added to observations
     pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<Error>> {
-        let end_pos = read.cigar().end_pos()? as u32;
+        let pos = read.pos() as u32;
         let qname = read.qname();
-        if self.observations.contains_key(&end_pos) {
-            for obs in self.observations.get(&end_pos).unwrap() {
+        if self.observations.contains_key(&pos) {
+            debug!("Read Pos {} already there", pos);
+            for obs in self.observations.get(&pos).unwrap() {
                 if obs.read.qname() == qname {
                     return Ok(true);
                 }
@@ -372,16 +383,17 @@ impl ObservationMatrix {
             start_pos, end_pos, interval_start, interval_end
         );
         debug!(
-            "Read {} added",
+            "Read {} to be added",
             String::from_utf8_lossy(read.qname())
         );
-        if end_pos >= interval_end && start_pos <= interval_start {
+        if end_pos >= interval_end && start_pos <= interval_start && !(self.contains(&read).unwrap()) {
             // only insert if end_pos is larger than the interval end
             let mut obs = Observation {
                 read: read,
                 haplotype: 0,
             };
-            for (i, variant) in self.variants.iter().enumerate() {
+            for (i, variant) in self.variants.iter().rev().enumerate() {
+                debug!("Checking variant support for new reads!");
                 obs.update_haplotype(i, variant)?;
             }
             let pos = match reverse {
@@ -393,6 +405,7 @@ impl ObservationMatrix {
                 .entry(pos)
                 .or_insert_with(|| Vec::new())
                 .push(obs);
+
         }
         Ok(())
     }
@@ -429,6 +442,7 @@ impl ObservationMatrix {
         let mut haplotypes: VecMap<usize> = VecMap::new();
         for obs in Itertools::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
+            debug!("obs haplotype:  {}", obs.haplotype);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
         let mut seq = Vec::with_capacity(window_len as usize);
@@ -484,7 +498,11 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
-                        if bitvector_is_set(haplotype, j) {
+                        let bit_pos = match transcript.strand {
+                            PhasingStrand::Reverse => j,
+                            PhasingStrand::Forward => variants.len() - 1 -j,
+                        };
+                        if bitvector_is_set(haplotype, bit_pos) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if (j + 1) < variants.len() && i == variants[j + 1].pos() {
                                 j += 1;
@@ -564,8 +582,10 @@ impl ObservationMatrix {
                     // if no variant, just push the reference sequence
                     seq.push(refseq[(i - gene.start()) as usize]);
                     germline_seq.push(refseq[(i - gene.start()) as usize]);
-                    i += 1
+                    i += 1;
+                    debug!("Sequence: {:?}", seq);
                 }
+                debug!("all variants {}; som variants: {}", n_variants, n_somatic);
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
             if indel {
@@ -912,8 +932,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         for exon in &transcript.exons {
-            println!("Exon Start: {}", exon.start);
-            println!("Exon End: {}", exon.end);
+            debug!("Exon Start: {}", exon.start);
+            debug!("Exon End: {}", exon.end);
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let current_exon_offset = match exon_rest {
                 0 => 0,
@@ -940,7 +960,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 if max_read_len < window_len {
                     break;
                 }
-                println!("Offset {}, old offset {}", offset, old_offset);
+                debug!("Offset {}, old offset {}", offset, old_offset);
                 // advance window to next position
                 let nvars = Itertools::flatten(
                     variant_tree
@@ -950,7 +970,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 .count();
                 // store number of variants in window in case it is the last window for this exon
                 last_window_vars = nvars;
-                println!("Variants in window: {}", nvars);
+                debug!("Variants in window: {}", nvars);
                 // first window in the exon, all variants found are newly added
                 let added_vars = if offset == old_offset {
                     nvars
@@ -987,7 +1007,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     .count()
                 };
 
-                println!(
+                debug!(
                     "Offset: {} - max_read_len {} - window_len {}",
                     offset,
                     max_read_len,
@@ -995,7 +1015,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 );
                 let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
+                    debug!("Offset: {} ; (Offset - (max_read_len - window_len)) = {}", offset, offset - (max_read_len - window_len));
                     if offset == exon.end - window_len - current_exon_offset {
+                        debug!("First exon window");
                         Itertools::flatten(
                             read_tree
                                 .range((offset - (max_read_len - window_len))..(offset + 1))
@@ -1009,7 +1031,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             read_tree
                                 .range(
                                     (offset - (max_read_len - window_len))
-                                        ..(offset - (max_read_len - window_len) + 1),
+                                        ..(offset + 1),
                                 )
                                 .map(|rec| rec.1),
                         )
