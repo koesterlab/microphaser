@@ -248,18 +248,18 @@ fn test_reverse() {
     );
 }
 
-#[test]
-fn test_reverse_germline() {
-    fs::create_dir("tests/output");
-    let reference = download_reference("chr1");
-    microphaser_normal(&format!("tests/resources/test_reverse/reverse_test.bam \
-        --variants tests/resources/test_reverse/reverse_test.germline.vcf \
-        --ref {} > tests/output/reverse_test.germline.fa < tests/resources/test_reverse/reverse_test_germline.gtf", reference));
-    test_output(
-        "tests/output/reverse_test.germline.fa",
-        "tests/resources/test_reverse/expected_output/reverse_test.germline.fa",
-    );
-}
+//#[test]
+//fn test_reverse_germline() {
+//    fs::create_dir("tests/output");
+//    let reference = download_reference("chr1");
+//    microphaser_normal(&format!("tests/resources/test_reverse/reverse_test.bam \
+//        --variants tests/resources/test_reverse/reverse_test.germline.vcf \
+//        --ref {} > tests/output/reverse_test.germline.fa < tests/resources/test_reverse/reverse_test_germline.gtf", reference));
+//    test_output(
+//        "tests/output/reverse_test.germline.fa",
+//        "tests/resources/test_reverse/expected_output/reverse_test.germline.fa",
+//    );
+//}
 
 //#[test]
 //fn splice_test_reverse() {
