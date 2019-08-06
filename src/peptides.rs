@@ -1,15 +1,39 @@
 use std::error::Error;
-use std::fs;
 use std::io;
+use std::fs;
 
 use std::collections::{HashMap, HashSet};
 
-use alphabets::dna;
-use bio::alphabets;
 use bio::io::fasta;
+use bio::alphabets;
+use alphabets::dna;
 
 extern crate bincode;
-use bincode::serialize_into;
+use bincode::{deserialize_from, serialize_into};
+
+#[derive(Deserialize,Debug,Serialize)]
+pub struct IDRecord{
+    id: String,
+    transcript: String,
+    gene_id: String,
+    gene_name: String,
+    chrom: String,
+    offset: u32,
+    freq: f64,
+    depth: u32,
+    nvar: u32,
+    nsomatic: u32,
+    nvariant_sites: u32,
+    nsomvariant_sites: u32,
+    strand: String,
+    variant_sites: String,
+    somatic_positions: String,
+    somatic_aa_change: String,
+    germline_positions: String,
+    germline_aa_change: String,
+    normal_sequence: String,
+    mutant_sequence: String
+}
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
     // data structure for mapping codons to amino acids
@@ -50,11 +74,11 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
     let map = make_pairs();
     match map.get(v) {
         Some(aa) => Ok(aa),
-        None => Err(()),
+        None => Err(())
     }
 }
 
-fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
+fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
     let case_seq = s.to_ascii_uppercase();
     let mut r = case_seq.to_vec();
     // reverse complement the sequence if the transcript is in reverse orientation
@@ -87,15 +111,63 @@ pub fn build<F: io::Read>(
         // check if peptide is in forward or reverse orientation
         let frame = match id.ends_with("F") {
             true => 1,
-            false => -1,
+            false => -1
         };
         debug!("{}", String::from_utf8_lossy(seq));
         debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
         let pepseq = to_protein(seq, frame).unwrap();
         ref_set.insert(pepseq);
+
     }
     // save as binary
     serialize_into(binary_writer, &ref_set)?;
     debug!("Reference is done!");
+    Ok(())
+}
+
+pub fn filter<F: io::Read, O: io::Write>(
+    reference_reader: fs::File,
+    tsv_reader: &mut csv::Reader<F>,
+    fasta_writer: &mut fasta::Writer<O>,
+    normal_writer: &mut fasta::Writer<fs::File>,
+    tsv_writer: &mut csv::Writer<fs::File>
+) -> Result<(), Box<Error>> {
+    // load refernce HashSet from file
+    let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
+
+    // get peptide info from info.tsv table (including sequences)
+    for record in tsv_reader.records() {
+        let record = record?;
+        let row: IDRecord = record.deserialize(None)?;
+        let id = &row.id;
+        let mt_seq = &row.mutant_sequence.as_bytes();
+        let wt_seq = &row.normal_sequence.as_bytes();
+        let frame = match id.ends_with("F") {
+            true => 1,
+            false => -1
+        };
+        let neopeptide = to_protein(mt_seq, frame).unwrap();
+        let wt_peptide = match wt_seq.len() == 0 {
+            true => vec![],
+            false => to_protein(wt_seq, frame).unwrap()
+        };
+
+        // exclude silent mutations
+        if neopeptide == wt_peptide {
+            continue;
+        }
+
+        //check if neopeptide sequence is also found in the reference sequence
+        match ref_set.contains(&neopeptide) {
+            true => (),
+            false => {
+                fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
+                // if we don't have a matching normal, do not write an empty entry to the output
+                if wt_peptide.len() > 0 {
+                    normal_writer.write(&format!("{}", id), None, &wt_peptide)?;}
+                tsv_writer.serialize(row)?;
+            }
+        }
+    }
     Ok(())
 }

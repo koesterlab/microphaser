@@ -34,6 +34,7 @@ pub struct IDRecord {
 }
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
+    // data structure for mapping codons to amino acids
     let grouped = vec![
         ("I", vec!["ATT", "ATC", "ATA"]),
         ("L", vec!["CTT", "CTC", "CTA", "CTG", "TTA", "TTG"]),
@@ -67,6 +68,7 @@ fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
 }
 
 fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
+    // translate a codon triplet to amino acid
     let map = make_pairs();
     match map.get(v) {
         Some(aa) => Ok(aa),
@@ -77,13 +79,14 @@ fn to_aminoacid(v: &[u8]) -> Result<&'static [u8], ()> {
 fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
     let case_seq = s.to_ascii_uppercase();
     let mut r = case_seq.to_vec();
-
+    // reverse complement the sequence if the transcript is in reverse orientation
     if frame < 0 {
         r = dna::revcomp(&case_seq.to_vec());
         frame = frame * (-1)
     }
     let mut p = vec![];
     let mut i = frame as usize - 1;
+    // iterate over all codons in the sequence and translate them
     while i < r.len() - 2 {
         let sub = &r[i..(i + 3)];
         let aa = to_aminoacid(sub)?;
@@ -95,34 +98,15 @@ fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
 
 pub fn filter<F: io::Read, O: io::Write>(
     reference_reader: fs::File,
-    //_tumor_reader: fasta::Reader<F>,
-    //_normal_reader: fasta::Reader<F>,
     tsv_reader: &mut csv::Reader<F>,
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>,
 ) -> Result<(), Box<Error>> {
-    // load HashSet from file
-    let new_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
+    // load refernce HashSet from file
+    let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
 
-    /*    // build set of unmutated (wildtype/normal) peptides corresponding to the neopeptides
-    let mut wt_map = HashMap::new();
-    for record in (normal_reader).records() {
-        let record = record?;
-        let id = record.id();
-        let seq = record.seq();
-        // check if peptide is in forward or reverse orientation
-        let frame = match id.ends_with("F") {
-            true => 1,
-            false => -1
-        };
-
-        let peptide = to_protein(seq, frame).unwrap();
-
-        wt_map.insert(id, peptide);
-    }*/
-
-    // get everything from info.tsv (?)
+    // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
         let row: IDRecord = record.deserialize(None)?;
@@ -144,8 +128,8 @@ pub fn filter<F: io::Read, O: io::Write>(
             continue;
         }
 
-        //        println!("{:?}", neopeptide);
-        match new_set.contains(&neopeptide) {
+        //check if neopeptide sequence is also found in the reference sequence
+        match ref_set.contains(&neopeptide) {
             true => (),
             false => {
                 fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
@@ -157,31 +141,5 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
         }
     }
-
-    /*    // iterate over neopeptides
-    for record in (tumor_reader).records() {
-        let record = record?;
-        let id = record.id();
-        let seq = record.seq();
-         // check if peptide is in forward or reverse orientation
-        let frame = match id.ends_with("F") {
-            true => 1,
-            false => -1
-        };
-
-        let neopeptide = to_protein(seq, frame).unwrap();
-        let peptide = match wt_map.get(id) {
-            Some(pepseq) => pepseq,
-            _ => ""
-        };
-
-        match ref_set.contains(&neopeptide) {
-            true => (),
-            false => {
-                fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
-                normal_writer.write(&format!("{}", id), None, &peptide)?;
-            }
-        }
-    }*/
     Ok(())
 }

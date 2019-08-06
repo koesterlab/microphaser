@@ -1,8 +1,10 @@
 use std::cmp::Ordering;
+
+use bio_types::strand::Strand;
+
 use std::error::Error;
 use std::str;
 
-use bio::utils::Strand;
 use rust_htslib::bcf;
 
 use std::borrow::ToOwned;
@@ -252,42 +254,3 @@ impl Interval {
         }
     }
 }
-
-//#[derive(Debug)]
-//pub struct VariantBuffer {
-//    pub buffer: bcf::buffer::RecordBuffer,
-//    pub btree: BTreeMap<u32, bcf::Record>
-//}
-
-//impl VariantBuffer {
-//    pub fn new(bcf_reader: bcf::Reader) -> Self {
-//        VariantBuffer {
-//            buffer: bcf::buffer::RecordBuffer::new(bcf_reader),
-//            btree: BTreeMap::new()
-//        }
-//    }
-
-//    pub fn update_btree(&mut self, rec: &bcf::Record) {
-//        self.btree.insert(rec.pos(),*rec);
-//    }
-//}
-
-//#[derive(Debug)]
-//pub struct SubRecord {
-//    pub pos: u32,
-//    pub alleles: Vec<[u8]>,
-//    pub is_germline: bool
-//}
-
-//impl SubRecord {
-//    pub fn new(rec: &mut bcf::Record) -> Self {
-//        let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
-//        let pos = rec.pos();
-//        let alleles = rec.alleles().into_iter().collect();
-//        SubRecord {
-//            pos: pos,
-//            alleles: alleles,
-//            is_germline: is_germline
-//        }
-//    }
-//}

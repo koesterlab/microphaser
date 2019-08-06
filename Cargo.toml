@@ -5,8 +5,9 @@ authors = ["Jan Forster <jan.forster@uk-essen.de>", "Johannes Köster <johannes.
 edition = "2018"
 
 [dependencies]
-bio = "0.16"
+bio = "0.28"
 rust-htslib = "0.21"
+bio-types = "0.5"
 clap = { version = "2.27", features = ["yaml", "color", "suggestions"]}
 itertools = "0.6"
 log = "0.4"

@@ -1,6 +1,6 @@
-name: somatic
+name: whole_genome
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
-about: Tumor/Normal microphasing for neoantigen prediction.
+about: Phasing of whole genome samples.
 
 global_settings:
   - ColoredHelp
@@ -35,6 +35,10 @@ args:
       short: t
       default_value: "info.tsv"
       help: TSV output for further information on haplotype IDs
+  - relevant:
+      long: only-relevant
+      short: o
+      help: Output only relevant haplotypes (spanning over variant positions)
   - normal:
       long: normaloutput
       short: n
