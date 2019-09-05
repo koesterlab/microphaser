@@ -1254,8 +1254,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             PhasingStrand::Forward => &prev_hap_vec,
                             PhasingStrand::Reverse => &hap_vec,
                         };
-                        debug!("{:?}", first_hap_vec);
-                        debug!("{:?}", sec_hap_vec);
+                        debug!("first_hap_vec: {:?}", first_hap_vec);
+                        debug!("sec_hap_vec: {:?}", sec_hap_vec);
 
                         let mut output_map: BTreeMap<
                             (u32, Vec<u8>, Vec<u8>),
@@ -1289,6 +1289,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         new_mt_sequences
                                             .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                     }
+                                } else if prev_wt_sequence != prev_mt_sequence {
+                                    new_mt_sequences
+                                        .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                 }
                                 debug!(
                                     "Complete WT Sequence : {:?}",
