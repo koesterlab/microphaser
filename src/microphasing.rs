@@ -590,10 +590,10 @@ impl ObservationMatrix {
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
             if indel {
-                println!("indel");
+                debug!("indel");
                 germline_seq.clear();
             }
-            println!("germline_seq: {:?} mut_seq: {:?}", germline_seq, seq);
+            debug!("germline_seq: {:?} mut_seq: {:?}", germline_seq, seq);
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}{}", &seq, transcript.id, offset);
@@ -693,9 +693,9 @@ impl ObservationMatrix {
                 true => 0,
                 false => exon_end - window_end,
             };
-            println!("Rest: {}", rest);
+            debug!("Rest: {}", rest);
             let start = offset - exon_start;
-            println!("Start: {}", start);
+            debug!("Start: {}", start);
 
 
             //TODO: Activate this part as cleaner code
@@ -910,7 +910,7 @@ impl ObservationMatrix {
                 tsv_writer.serialize(record)?;
             }
         }
-        println!("{:?}", haplotypes_vec);
+        debug!("{:?}", haplotypes_vec);
         Ok(haplotypes_vec)
     }
 }
@@ -1247,7 +1247,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
                     if at_splice_side {
-                        println!("SpliceSide");
+                        debug!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                             PhasingStrand::Forward => &hap_vec,
                             PhasingStrand::Reverse => &prev_hap_vec,
@@ -1256,8 +1256,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             PhasingStrand::Forward => &prev_hap_vec,
                             PhasingStrand::Reverse => &hap_vec,
                         };
-                        println!("first_hap_vec: {:?}", first_hap_vec);
-                        println!("sec_hap_vec: {:?}", sec_hap_vec);
+                        debug!("first_hap_vec: {:?}", first_hap_vec);
+                        debug!("sec_hap_vec: {:?}", sec_hap_vec);
 
                         let mut output_map: BTreeMap<
                             (u32, Vec<u8>, Vec<u8>),
@@ -1295,14 +1295,14 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     new_mt_sequences
                                         .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                 }
-                                println!(
+                                debug!(
                                     "Complete WT Sequence : {:?}",
                                     String::from_utf8_lossy(&new_wt_sequence)
                                 );
 
                                 //Test: Keep even wildtype records for merging if we are in a short exon
                                 if is_short_exon {
-                                    println!("Exon is shorter than window - merge");
+                                    debug!("Exon is shorter than window - merge");
                                     let new_hap_seq =  HaplotypeSeq {
                                         sequence: Vec::new(),
                                         record: prev_record.update(
@@ -1313,20 +1313,20 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         )
                                     };
                                     new_hap_vec.push(new_hap_seq);
-                                    println!("New HapVec {:?}", new_hap_vec );
+                                    debug!("New HapVec {:?}", new_hap_vec );
                                 }
 
                                 // slide window over the spanning sequence
                                 for new_mt in new_mt_sequences {
                                     let new_mt_sequence = new_mt.as_bytes();
-                                    println!(
+                                    debug!(
                                         "Complete MT Sequence : {:?}",
                                         String::from_utf8_lossy(&new_mt_sequence)
                                     );
 
                                     //Test: Merge short exon to previous window and save as hap_vec
                                     if is_short_exon {
-                                        println!("Exon is shorter than window - merge");
+                                        debug!("Exon is shorter than window - merge");
                                         let new_hap_seq =  HaplotypeSeq {
                                             sequence: Vec::new(),
                                             record: prev_record.update(
@@ -1337,7 +1337,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             )
                                         };
                                         new_hap_vec.push(new_hap_seq);
-                                        println!("New HapVec {:?}", new_hap_vec );
+                                        debug!("New HapVec {:?}", new_hap_vec );
                                         continue;
                                     }
 
@@ -1349,11 +1349,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         let out_mt_seq = &new_mt_sequence[splice_offset as usize
                                             ..(splice_offset + window_len) as usize];
 
-                                        println!(
+                                        debug!(
                                             "Out MT Sequence : {:?}",
                                             String::from_utf8_lossy(&out_mt_seq)
                                         );
-                                        println!(
+                                        debug!(
                                             "Out WT Sequence : {:?}",
                                             String::from_utf8_lossy(&out_wt_seq)
                                         );
