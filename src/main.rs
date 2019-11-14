@@ -68,15 +68,14 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
         .chain(std::io::stderr())
         .apply()
         .unwrap();
-
     let mut gtf_reader = gff::Reader::new(io::stdin(), gff::GffType::GTF2);
-
+    debug!("GTF");
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
-
+    debug!("BAM");
     let bcf_reader = bcf::Reader::from_path(matches.value_of("variants").unwrap())?;
-
+    debug!("BCF");
     let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
-
+    debug!("fasta");
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
@@ -84,7 +83,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
     let mut tsv_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(matches.value_of("tsv").unwrap())?;
-
+    debug!("Start");
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
         &mut fasta_reader,

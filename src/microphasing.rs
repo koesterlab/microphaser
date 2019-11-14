@@ -490,108 +490,135 @@ impl ObservationMatrix {
                         ..(offset + window_len - gene.start()) as usize],
                 );
             //continue;
-            } else {
-                while i < window_end {
-                    debug!("window_end: {}", window_end);
-                    debug!("i: {}", i);
-                    debug!("j: {}", j);
-                    // TODO what happens if a deletion starts upstream of window and overlaps it
+        } else {
+            while i < window_end {
+                debug!("window_end: {}", window_end);
+                debug!("i: {}", i);
+                debug!("j: {}", j);
+                // TODO what happens if a deletion starts upstream of window and overlaps it
 
-                    while j < variants.len() && i == variants[j].pos() {
-                        debug!("j: {}, variantpos: {}", j, variants[j].pos());
-                        let bit_pos = match transcript.strand {
-                            PhasingStrand::Reverse => j,
-                            PhasingStrand::Forward => variants.len() - 1 -j,
-                        };
-                        if bitvector_is_set(haplotype, bit_pos) {
-                            debug!("Haplotype: {} ; j: {}", haplotype, j);
-                            if (j + 1) < variants.len() && i == variants[j + 1].pos() {
-                                j += 1;
-                            }
-                            match variants[j] {
-                                // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
-                                &Variant::SNV { alt, .. } => {
-                                    match variants[j].is_germline() {
-                                        true => germline_seq.push(switch_ascii_case(
-                                            alt,
-                                            refseq[(i - gene.start()) as usize],
-                                        )),
-                                        false => {
-                                            germline_seq.push(refseq[(i - gene.start()) as usize])
-                                        }
-                                    }
-                                    seq.push(switch_ascii_case(
+                while j < variants.len() && i == variants[j].pos() {
+                    debug!("j: {}, variantpos: {}", j, variants[j].pos());
+                    let bit_pos = match transcript.strand {
+                        PhasingStrand::Reverse => j,
+                        PhasingStrand::Forward => variants.len() - 1 -j,
+                    };
+                    debug!("frameshift: {}", variants[j].frameshift());
+                    if bitvector_is_set(haplotype, bit_pos) {
+                        debug!("Haplotype: {} ; j: {}", haplotype, j);
+                        // if (j + 1) < variants.len() && i == variants[j + 1].pos() {
+                        //     j += 1;
+                        // }
+                        match variants[j] {
+                            // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
+                            &Variant::SNV { alt, .. } => {
+                                debug!("Variant: SNV");
+                                match variants[j].is_germline() {
+                                    true => germline_seq.push(switch_ascii_case(
                                         alt,
                                         refseq[(i - gene.start()) as usize],
-                                    ));
-                                    i += 1;
-                                }
-                                // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
-                                &Variant::Insertion { seq: ref s, .. } => {
-                                    match variants[j].is_germline() {
-                                        true => germline_seq.extend(
-                                            switch_ascii_case_vec(
-                                                s,
-                                                refseq[(i - gene.start()) as usize],
-                                            )
-                                            .into_iter(),
-                                        ),
-                                        false => indel = true,
+                                    )),
+                                    false => {
+                                        germline_seq.push(refseq[(i - gene.start()) as usize])
                                     }
-                                    seq.extend(
+                                }
+                                seq.push(switch_ascii_case(
+                                    alt,
+                                    refseq[(i - gene.start()) as usize],
+                                ));
+                                i += 1;
+                            }
+                            // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
+                            &Variant::Insertion { seq: ref s, .. } => {
+                                debug!("Variant: INS");
+                                match variants[j].is_germline() {
+                                    true => germline_seq.extend(
                                         switch_ascii_case_vec(
                                             s,
                                             refseq[(i - gene.start()) as usize],
                                         )
                                         .into_iter(),
-                                    );
-                                    //indel = true;
-                                    i += 1;
+                                    ),
+                                    false => indel = true,
+                                }
+                                seq.extend(
+                                    switch_ascii_case_vec(
+                                        s,
+                                        refseq[(i - gene.start()) as usize],
+                                    )
+                                    .into_iter(),
+                                );
+                                //indel = true;
+                                i += 1;
+                                if strand == "Forward" {
                                     window_end -= (s.len() as u32) - 1;
+                                } else {
+                                    window_end -= (s.len() as u32 - variants[j].frameshift() - 1);
                                 }
-                                // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
-                                &Variant::Deletion { len, .. } => {
-                                    match variants[j].is_germline() {
-                                        true => {
-                                            germline_seq.push(refseq[(i - gene.start()) as usize])
-                                        }
-                                        false => indel = true,
+                            }
+                            // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
+                            &Variant::Deletion { len, .. } => {
+                                debug!("Variant: DEL");
+                                match variants[j].is_germline() {
+                                    true => {
+                                        germline_seq.push(refseq[(i - gene.start()) as usize])
                                     }
-                                    seq.push(refseq[(i - gene.start()) as usize]);
-                                    //indel = true;
-                                    i += len + 1;
-                                    window_end += len + 1;
+                                    false => indel = true,
+                                }
+                                seq.push(refseq[(i - gene.start()) as usize]);
+                                //indel = true;
+                                i += len + 1;
+                                if strand == "Forward" {
+                                    window_end += len;
+                                } else {
+                                    window_end += len - variants[j].frameshift();
                                 }
                             }
-
-                            // counting somatic variants
-                            if !variants[j].is_germline() {
-                                n_somatic += 1;
-                                variant_profile.push(2);
-                            } else {
-                                variant_profile.push(1);
-                            }
-                            // counting total number of variants
-                            n_variants += 1;
-
-                            j += 1;
-                        } else {
-                            variant_profile.push(0);
-                            j += 1;
                         }
+
+                        // counting somatic variants
+                        if !variants[j].is_germline() {
+                            n_somatic += 1;
+                            variant_profile.push(2);
+                        } else {
+                            variant_profile.push(1);
+                        }
+                        // counting total number of variants
+                        n_variants += 1;
+
+                        j += 1;
+                    } else {
+                        variant_profile.push(0);
+                        j += 1;
                     }
-                    // if no variant, just push the reference sequence
+                }
+                // if no variant, just push the reference sequence
+                if i < window_end {
                     seq.push(refseq[(i - gene.start()) as usize]);
                     germline_seq.push(refseq[(i - gene.start()) as usize]);
                     i += 1;
-                    debug!("Sequence: {:?}", seq);
                 }
-                debug!("all variants {}; som variants: {}", n_variants, n_somatic);
+                debug!("Sequence: {:?}", seq);
             }
+            debug!("all variants {}; som variants: {}", n_variants, n_somatic);
+        }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
             if indel {
                 debug!("indel");
                 germline_seq.clear();
+            }
+            if strand == "Reverse" {
+                debug!("{}", seq.len());
+                if seq.len() < window_len as usize {
+                    let mut add_seq = refseq[(offset as usize - (window_len as usize - seq.len()) - gene.start() as usize)..(offset - gene.start()) as usize].to_vec();
+                    let mut add_seq_g = add_seq.clone();
+                    add_seq.extend(seq);
+                    seq = add_seq;
+                    add_seq_g.extend(germline_seq);
+                    germline_seq = add_seq_g;
+                }
+                seq = seq[(seq.len() - window_len as usize)..].to_vec();
+                germline_seq = germline_seq[(germline_seq.len() - window_len as usize)..].to_vec();
             }
             debug!("germline_seq: {:?} mut_seq: {:?}", germline_seq, seq);
             let mut shaid = sha1::Sha1::new();

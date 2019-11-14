@@ -139,7 +139,7 @@ impl Variant {
         match self {
             &Variant::SNV { .. } => 0,
             &Variant::Deletion { len, .. } => len % 3,
-            &Variant::Insertion { ref seq, .. } => seq.len() as u32 % 3,
+            &Variant::Insertion { ref seq, .. } => (seq.len() as u32 - 1) % 3,
         }
     }
 }
