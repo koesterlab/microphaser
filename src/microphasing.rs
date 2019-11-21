@@ -493,7 +493,7 @@ impl ObservationMatrix {
         } else {
             while i < window_end {
                 debug!("window_end: {}", window_end);
-                debug!("i: {}", i);
+                println!("i: {}", i);
                 debug!("j: {}", j);
                 // TODO what happens if a deletion starts upstream of window and overlaps it
 
@@ -608,7 +608,8 @@ impl ObservationMatrix {
                 germline_seq.clear();
             }
             if strand == "Reverse" {
-                debug!("{}", seq.len());
+                println!("{}", seq.len());
+                println!("reverse");
                 // if seq.len() < window_len as usize {
                 //     let mut add_seq = refseq[(offset as usize - (window_len as usize - seq.len()) - gene.start() as usize)..(offset - gene.start()) as usize].to_vec();
                 //     let mut add_seq_g = add_seq.clone();
@@ -619,7 +620,9 @@ impl ObservationMatrix {
                 // }
                 if seq.len() > window_len as usize {
                     seq = seq[(seq.len() - window_len as usize)..].to_vec();
-                    germline_seq = germline_seq[(germline_seq.len() - window_len as usize)..].to_vec();
+                    if germline_seq.len() > window_len as usize {
+                        germline_seq = germline_seq[(germline_seq.len() - window_len as usize)..].to_vec();
+                    }
                 }
             }
             let this_window_len = match seq.len() < window_len as usize {
