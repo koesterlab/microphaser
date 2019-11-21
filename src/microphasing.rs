@@ -568,11 +568,11 @@ impl ObservationMatrix {
                                 seq.push(refseq[(i - gene.start()) as usize]);
                                 //indel = true;
                                 i += len + 1;
-                                if strand == "Forward" {
-                                    window_end += len;
-                                } else {
-                                    window_end += len - variants[j].frameshift();
-                                }
+                                // if strand == "Forward" {
+                                //     window_end += len;
+                                // } else {
+                                //     window_end += len - variants[j].frameshift();
+                                // }
                             }
                         }
 
@@ -609,17 +609,23 @@ impl ObservationMatrix {
             }
             if strand == "Reverse" {
                 debug!("{}", seq.len());
-                if seq.len() < window_len as usize {
-                    let mut add_seq = refseq[(offset as usize - (window_len as usize - seq.len()) - gene.start() as usize)..(offset - gene.start()) as usize].to_vec();
-                    let mut add_seq_g = add_seq.clone();
-                    add_seq.extend(seq);
-                    seq = add_seq;
-                    add_seq_g.extend(germline_seq);
-                    germline_seq = add_seq_g;
+                // if seq.len() < window_len as usize {
+                //     let mut add_seq = refseq[(offset as usize - (window_len as usize - seq.len()) - gene.start() as usize)..(offset - gene.start()) as usize].to_vec();
+                //     let mut add_seq_g = add_seq.clone();
+                //     add_seq.extend(seq);
+                //     seq = add_seq;
+                //     add_seq_g.extend(germline_seq);
+                //     germline_seq = add_seq_g;
+                // }
+                if seq.len() > window_len as usize {
+                    seq = seq[(seq.len() - window_len as usize)..].to_vec();
+                    germline_seq = germline_seq[(germline_seq.len() - window_len as usize)..].to_vec();
                 }
-                seq = seq[(seq.len() - window_len as usize)..].to_vec();
-                germline_seq = germline_seq[(germline_seq.len() - window_len as usize)..].to_vec();
             }
+            let this_window_len = match seq.len() < window_len as usize {
+                true => seq.len() as u32,
+                false => window_len
+            };
             debug!("germline_seq: {:?} mut_seq: {:?}", germline_seq, seq);
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
@@ -633,10 +639,10 @@ impl ObservationMatrix {
             // normal sequence of haplotype
             let normal_peptide = match germline_seq.len() {
                 0 => String::from_utf8_lossy(&germline_seq),
-                _ => String::from_utf8_lossy(&germline_seq[..window_len as usize]),
+                _ => String::from_utf8_lossy(&germline_seq[..this_window_len as usize]),
             };
             // neopeptide sequence
-            let neopeptide = String::from_utf8_lossy(&seq[..window_len as usize]);
+            let neopeptide = String::from_utf8_lossy(&seq[..this_window_len as usize]);
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
             let mut n_som_variantsites = 0;
@@ -755,14 +761,14 @@ impl ObservationMatrix {
                     },
                     false => {
                         let mut mutseq = Vec::new();
-                        mutseq.extend(&seq[3 as usize..window_len as usize]);
+                        mutseq.extend(&seq[3 as usize..this_window_len as usize]);
                         mutseq.extend_from_slice(
                             &refseq[(window_end - gene.start()) as usize
                                 ..(window_end + rest - gene.start()) as usize],
                         );
                         let mut normseq = Vec::new();
                         if normal_peptide.len() > 0 {
-                            normseq.extend(&germline_seq[3 as usize..window_len as usize]);
+                            normseq.extend(&germline_seq[3 as usize..this_window_len as usize]);
                             normseq.extend_from_slice(
                                 &refseq[(window_end - gene.start()) as usize
                                     ..(window_end + rest - gene.start()) as usize],
@@ -777,13 +783,13 @@ impl ObservationMatrix {
                         let mut mutseq = refseq
                             [(offset - start - gene.start()) as usize..(offset - gene.start()) as usize]
                             .to_vec();
-                        mutseq.extend(&seq[..(window_len - 3) as usize]);
+                        mutseq.extend(&seq[..(this_window_len - 3) as usize]);
                         let mut normseq = refseq
                             [(offset - start - gene.start()) as usize..(offset - gene.start()) as usize]
                             .to_vec();
                         match indel == false {//normal_peptide.len() > 0 {
                             true => {
-                                normseq.extend(&germline_seq[..(window_len - 3) as usize]);
+                                normseq.extend(&germline_seq[..(this_window_len - 3) as usize]);
                             },
                             false => normseq.clear(),
                         }
@@ -926,12 +932,12 @@ impl ObservationMatrix {
 
             // write neopeptides, information and matching normal peptide to files
             if record.nsomatic > 0 && !(is_short_exon){
-                fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?;
+                fasta_writer.write(&format!("{}", record.id), None, &seq[..this_window_len as usize])?;
                 if germline_seq.len() > 0 {
                     normal_writer.write(
                         &format!("{}", record.id),
                         None,
-                        &germline_seq[..window_len as usize],
+                        &germline_seq[..this_window_len as usize],
                     )?;
                 }
                 tsv_writer.serialize(record)?;
