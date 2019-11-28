@@ -683,6 +683,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         for exon in &transcript.exons {
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
+            if exon.start > exon.end {
+                continue;
+            }
             debug!("Exon Length: {}", exon.end - exon.start);
             let exon_len = exon.end - exon.start;
             debug!("Exon Rest: {}", exon_rest);

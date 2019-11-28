@@ -481,6 +481,8 @@ impl ObservationMatrix {
             let mut variant_profile = Vec::new();
             //let mut somatic_profile = Vec::new();
             if variants.is_empty() {
+                debug!("HA");
+                debug!("Test {}", offset - gene.start());
                 germline_seq.extend(
                     &refseq[(offset - gene.start()) as usize
                         ..(offset + window_len - gene.start()) as usize],
@@ -489,6 +491,7 @@ impl ObservationMatrix {
                     &refseq[(offset - gene.start()) as usize
                         ..(offset + window_len - gene.start()) as usize],
                 );
+                debug!("HAHA");
             //continue;
         } else {
             while i < window_end {
@@ -1024,6 +1027,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         for exon in &transcript.exons {
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
+            if exon.start > exon.end {
+                continue;
+            }
             debug!("Exon Length: {}", exon.end - exon.start);
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let exon_len = exon.end - exon.start;
@@ -1274,6 +1280,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     }
 
                     // check if the current offset is at a splice side
+                    debug!("{}", offset - current_exon_offset);
                     let at_splice_side = match transcript.strand {
                         PhasingStrand::Forward => offset - current_exon_offset == exon.start,
                         PhasingStrand::Reverse => {
@@ -1468,6 +1475,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Reverse => offset -= 1,
                         PhasingStrand::Forward => offset += 1,
                     }
+                    debug!("New offset: {}", offset);
                 }
             }
         }
@@ -1509,13 +1517,14 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
         }
         Ok(())
     };
-
     for record in gtf_reader.records() {
+        debug!("New Record!");
         let record = record?;
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
                 phase_last_gene(gene)?;
+                debug!("Gene found");
                 gene = Some(Gene::new(
                     record
                         .attributes()
