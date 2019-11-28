@@ -1389,10 +1389,18 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     }
 
                                     let mut splice_offset = 0;
-                                    while splice_offset + window_len <= new_wt_sequence.len() as u32
+                                    debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
+                                    debug!("WT_Seq len {}", new_wt_sequence.len() as u32);
+                                    while splice_offset + window_len <= new_mt_sequence.len() as u32
                                     {
-                                        let out_wt_seq = &new_wt_sequence[splice_offset as usize
-                                            ..(splice_offset + window_len) as usize];
+                                        debug!("splice offset: {}", splice_offset);
+                                        debug!("splice offset + windowlen: {}", splice_offset + window_len);
+                                        // check if wildtype sequence is shorter because of indels in on of the sequences
+                                        let out_wt_seq = match splice_offset + window_len <= new_wt_sequence.len() as u32 {
+                                            true => &new_wt_sequence[splice_offset as usize
+                                                ..(splice_offset + window_len) as usize],
+                                            false => &[]
+                                        };
                                         let out_mt_seq = &new_mt_sequence[splice_offset as usize
                                             ..(splice_offset + window_len) as usize];
 
@@ -1460,11 +1468,13 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         None,
                                         &out_mt_seq[..window_len as usize],
                                     )?;
-                                    normal_writer.write(
-                                        &format!("{}", out_record.id),
-                                        None,
-                                        &out_wt_seq[..window_len as usize],
-                                    )?;
+                                    if out_wt_seq != &[] {
+                                        normal_writer.write(
+                                            &format!("{}", out_record.id),
+                                            None,
+                                            &out_wt_seq[..window_len as usize],
+                                        )?;
+                                    }
                                     tsv_writer.serialize(out_record)?;
                                 }
                             }
