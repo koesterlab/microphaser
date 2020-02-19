@@ -77,7 +77,7 @@ fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
 pub fn build<F: io::Read>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     // build hashSet from reference peptide sequences
     let mut ref_set = HashSet::new();
     for record in (reference_reader).records() {

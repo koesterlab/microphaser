@@ -102,7 +102,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
 

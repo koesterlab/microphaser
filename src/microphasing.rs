@@ -41,7 +41,7 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
     }
 }
 
-pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
+pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
             let b = match read.cigar().read_pos(pos, false, false) {
@@ -258,7 +258,7 @@ pub struct Observation {
 }
 
 impl Observation {
-    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<Error>> {
+    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<dyn Error>> {
         debug!(
             "Read name {} ; Read pos {} ; variant pos {}",
             String::from_utf8_lossy(self.read.qname()),
@@ -308,7 +308,7 @@ impl ObservationMatrix {
     }
 
     /// Add new variants
-    pub fn extend_right(&mut self, new_variants: Vec<Variant>) -> Result<(), Box<Error>> {
+    pub fn extend_right(&mut self, new_variants: Vec<Variant>) -> Result<(), Box<dyn Error>> {
         let k = new_variants.len();
         debug!("Extend variants!");
         debug!("New variants {}", k);
@@ -353,7 +353,7 @@ impl ObservationMatrix {
     }
 
     /// Check if read has already been added to observations
-    pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<Error>> {
+    pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<dyn Error>> {
         let pos = read.pos() as u32;
         let qname = read.qname();
         if self.observations.contains_key(&pos) {
@@ -375,8 +375,8 @@ impl ObservationMatrix {
         interval_end: u32,
         interval_start: u32,
         reverse: bool,
-    ) -> Result<(), Box<Error>> {
-        let end_pos = read.cigar().end_pos()? as u32;
+    ) -> Result<(), Box<dyn Error>> {
+        let end_pos = read.cigar().end_pos() as u32;
         let start_pos = read.pos() as u32;
         debug!(
             "Read Start: {}, Read End: {} - Window Start: {}, Window End {}",
@@ -431,7 +431,7 @@ impl ObservationMatrix {
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
         is_short_exon: bool
-    ) -> Result<(Vec<HaplotypeSeq>), Box<Error>> {
+    ) -> Result<Vec<HaplotypeSeq>, Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
         variants_reverse.reverse();
@@ -556,7 +556,7 @@ impl ObservationMatrix {
                                 if strand == "Forward" {
                                     window_end -= (s.len() as u32) - 1;
                                 } else {
-                                    window_end -= (s.len() as u32 - variants[j].frameshift() - 1);
+                                    window_end -= s.len() as u32 - variants[j].frameshift() - 1;
                                 }
                             }
                             // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
@@ -964,7 +964,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     refseq: &mut Vec<u8>,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
     let end_overflow = 100;
     fasta_reader.fetch(
@@ -1024,19 +1024,25 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
+        // Variable showing exon count
+        let mut exon_number = 0;
         for exon in &transcript.exons {
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
             if exon.start > exon.end {
                 continue;
             }
+            exon_number += 1;
             debug!("Exon Length: {}", exon.end - exon.start);
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let exon_len = exon.end - exon.start;
             debug!("Exon Rest: {}", exon_rest);
-            let current_exon_offset = match exon_rest {
-                0 => 0,
-                _ => 3 - exon_rest,
+            let current_exon_offset = match exon_number { 
+                1 => exon.frame, //u32::from_str(exon.frame).unwrap(),
+                _ => match exon_rest {
+                    0 => 0,
+                    _ => 3 - exon_rest,
+                },
             };
             debug!("Exon Offset: {}", current_exon_offset);
             let is_short_exon = window_len > exon_len - current_exon_offset;
@@ -1506,14 +1512,14 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     tsv_writer: &mut csv::Writer<fs::File>,
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
-) -> Result<(), Box<Error>> {
-    let mut read_buffer = bam::RecordBuffer::new(bam_reader);
+) -> Result<(), Box<dyn Error>> {
+    let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());
 
     let mut gene = None;
-    let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<Error>> {
+    let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<dyn Error>> {
         if let Some(ref gene) = gene {
             if gene.biotype == "protein_coding" {
                 phase_gene(
@@ -1549,7 +1555,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .get("gene_name")
                         .expect("missing gene_name in GTF"),
                     record.seqname(),
-                    Interval::new(*record.start() as u32 - 1, *record.end() as u32),
+                    Interval::new(*record.start() as u32 - 1, *record.end() as u32, record.frame()),
                     record
                         .attributes()
                         .get("gene_biotype")
@@ -1584,6 +1590,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     .push(Interval::new(
                         *record.start() as u32 - 1,
                         *record.end() as u32,
+                        record.frame()
                     ));
             }
             "start_codon" => {

@@ -31,7 +31,7 @@ pub mod peptides;
 pub mod microphasing;
 pub mod normal_microphasing;
 
-pub fn run() -> Result<(), Box<Error>> {
+pub fn run() -> Result<(), Box<dyn Error>> {
     let yaml = load_yaml!("cli.yaml");
     let somatic_yaml = load_yaml!("somatic_cli.yaml");
     let germline_yaml = load_yaml!("germline_cli.yaml");
@@ -57,7 +57,7 @@ pub fn run() -> Result<(), Box<Error>> {
     }
 }
 
-pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -97,7 +97,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -130,7 +130,7 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_build(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -148,7 +148,7 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
     peptides::build(reference_reader, binary_writer)
 }
 
-pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -181,7 +181,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
                    .format(|out, message, _| out.finish(format_args!("{}", message)))
                    .level(

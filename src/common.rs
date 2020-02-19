@@ -4,6 +4,7 @@ use bio_types::strand::Strand;
 
 use std::error::Error;
 use std::str;
+use std::str::FromStr;
 
 use rust_htslib::bcf;
 
@@ -52,7 +53,7 @@ pub enum Variant {
 }
 
 impl Variant {
-    pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<Error>> {
+    pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<dyn Error>> {
         let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
 
         let ann = Annotation::new(rec);
@@ -216,6 +217,7 @@ impl Transcript {
 pub struct Interval {
     pub start: u32,
     pub end: u32,
+    pub frame: u32
 }
 
 impl Ord for Interval {
@@ -247,10 +249,14 @@ impl Clone for Interval {
 impl Copy for Interval {}
 
 impl Interval {
-    pub fn new(start: u32, end: u32) -> Self {
+    pub fn new(start: u32, end: u32, frame: &str) -> Self {
         Interval {
             start: start,
             end: end,
+            frame: match frame {
+                "." => 0 as u32,
+                _ => u32::from_str(frame).unwrap(),
+            }
         }
     }
 }
