@@ -101,7 +101,7 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
 pub fn build<F: io::Read>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     // build hashSet from reference peptide sequences
     let mut ref_set = HashSet::new();
     for record in (reference_reader).records() {
@@ -131,7 +131,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
 

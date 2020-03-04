@@ -31,7 +31,7 @@ pub mod peptides;
 pub mod microphasing;
 pub mod normal_microphasing;
 
-pub fn run() -> Result<(), Box<Error>> {
+pub fn run() -> Result<(), Box<dyn Error>> {
     let yaml = load_yaml!("cli.yaml");
     let somatic_yaml = load_yaml!("somatic_cli.yaml");
     let germline_yaml = load_yaml!("germline_cli.yaml");
@@ -57,7 +57,7 @@ pub fn run() -> Result<(), Box<Error>> {
     }
 }
 
-pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -68,15 +68,14 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
         .chain(std::io::stderr())
         .apply()
         .unwrap();
-
     let mut gtf_reader = gff::Reader::new(io::stdin(), gff::GffType::GTF2);
-
+    debug!("GTF");
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
-
+    debug!("BAM");
     let bcf_reader = bcf::Reader::from_path(matches.value_of("variants").unwrap())?;
-
+    debug!("BCF");
     let mut fasta_reader = fasta::IndexedReader::from_file(&matches.value_of("ref").unwrap())?;
-
+    debug!("fasta");
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
@@ -84,7 +83,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
     let mut tsv_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(matches.value_of("tsv").unwrap())?;
-
+    debug!("Start");
     let window_len = value_t!(matches, "window-len", u32)?;
     microphasing::phase(
         &mut fasta_reader,
@@ -98,7 +97,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -131,7 +130,7 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_build(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -149,7 +148,7 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<Error>> {
     peptides::build(reference_reader, binary_writer)
 }
 
-pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
         .format(|out, message, _| out.finish(format_args!("{}", message)))
         .level(if matches.is_present("verbose") {
@@ -182,7 +181,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<Error>> {
     )
 }
 
-pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<Error>> {
+pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
                    .format(|out, message, _| out.finish(format_args!("{}", message)))
                    .level(

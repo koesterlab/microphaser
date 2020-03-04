@@ -261,15 +261,15 @@ fn test_reverse() {
 //    );
 //}
 
-//#[test]
-//fn splice_test_reverse() {
-//    fs::create_dir("tests/output");
-//    let reference = download_reference("chr6");
-//    microphaser_somatic(&format!("tests/resources/splice_reverse_test/MMS22L.test.bam \
-//        --variants tests/resources/splice_reverse_test/MMS22L.test.vcf --tsv tests/output/splice_reverse_test.tsv \
-//        --normaloutput tests/output/splice_reverse_test.prot.fa --ref {} \
-//        > tests/output/splice_reverse_test.fa < tests/resources/splice_reverse_test/MMS22L.test.gtf", reference));
-//    test_output("tests/output/splice_reverse_test.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.fa");
-//    test_output("tests/output/splice_reverse_test.normal.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.normal.fa");
-//    test_output("tests/output/splice_reverse_test.tsv", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.tsv");
-//}
+#[test]
+fn splice_test_reverse() {
+   fs::create_dir("tests/output");
+   let reference = download_reference("chr6");
+   microphaser_somatic(&format!("tests/resources/splice_reverse_test/MMS22L.test.bam \
+       --variants tests/resources/splice_reverse_test/MMS22L.test.vcf --tsv tests/output/splice_reverse_test.tsv \
+       --normaloutput tests/output/splice_reverse_test.normal.fa --ref {} \
+       > tests/output/splice_reverse_test.fa < tests/resources/splice_reverse_test/MMS22L.test.gtf", reference));
+   test_output("tests/output/splice_reverse_test.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.fa");
+   test_output("tests/output/splice_reverse_test.normal.fa", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.normal.fa");
+   test_output("tests/output/splice_reverse_test.tsv", "tests/resources/splice_reverse_test/expected_output/splice_reverse_test.tsv");
+}

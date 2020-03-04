@@ -38,7 +38,7 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
         v.to_ascii_uppercase()}
 }
 
-pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<Error>> {
+pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
 //            debug!("Variant pos: {}", variant.pos());
@@ -118,7 +118,7 @@ pub struct Observation{
 
 
 impl Observation {
-    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<Error>> {
+    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<dyn Error>> {
         debug!("Read pos {} ; variant pos {}", self.read.pos() as u32, variant.pos());
         if (self.read.pos() as u32) > variant.pos() {
             panic!("bug: read starts right of variant");
@@ -167,7 +167,7 @@ impl ObservationMatrix {
     /// Add new variants
     pub fn extend_right(
         &mut self, new_variants: Vec<Variant>
-    ) -> Result<(), Box<Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let k = new_variants.len();
         debug!("Extend variants!");
         debug!("New variants {}", k);
@@ -195,8 +195,8 @@ impl ObservationMatrix {
     }
 
     /// Check if read has already been added to observations - deprecated
-    pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<Error>> {
-        let end_pos = read.cigar().end_pos()? as u32;
+    pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<dyn Error>> {
+        let end_pos = read.cigar().end_pos() as u32;
         let qname = read.qname();
         if self.observations.contains_key(&end_pos) {
             for obs in self.observations.get(&end_pos).unwrap() {
@@ -210,8 +210,8 @@ impl ObservationMatrix {
     }
 
     /// Add read, while considering given interval end. TODO: Think about reads that are not overlapping variant
-    pub fn push_read(&mut self, read: bam::Record, interval_end:u32, interval_start:u32) -> Result<(), Box<Error>> {
-        let end_pos = read.cigar().end_pos()? as u32;
+    pub fn push_read(&mut self, read: bam::Record, interval_end:u32, interval_start:u32) -> Result<(), Box<dyn Error>> {
+        let end_pos = read.cigar().end_pos() as u32;
         let start_pos = read.pos() as u32;
         debug!("Read Start: {}, Read End: {} - Window Start: {}, Window End {}", start_pos, end_pos, interval_start, interval_end);
         if end_pos >= interval_end && start_pos <= interval_start {
@@ -245,7 +245,7 @@ impl ObservationMatrix {
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
         only_relevant: bool
-    ) -> Result<(), Box<Error>> {
+    ) -> Result<(), Box<dyn Error>> {
 
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
@@ -455,7 +455,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     window_len: u32,
     refseq: &mut Vec<u8>,
     only_relevant: bool
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     let mut chunk = 0;
     while chunk < sequence.len - 1000000 {
         fasta_reader.fetch(&sequence.name, chunk, cmp::min(chunk + 1000000, sequence.len - 1))?;
@@ -709,8 +709,8 @@ pub fn phase<F: io::Read + io::Seek, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u32,
     only_relevant: bool
-) -> Result<(), Box<Error>> {
-    let mut read_buffer = bam::RecordBuffer::new(bam_reader);
+) -> Result<(), Box<dyn Error>> {
+    let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());
