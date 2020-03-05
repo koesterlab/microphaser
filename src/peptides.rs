@@ -11,7 +11,7 @@ use alphabets::dna;
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
 
-#[derive(Deserialize,Debug,Serialize)]
+#[derive(Deserialize,Debug,Serialize, Clone)]
 pub struct IDRecord{
     id: String,
     transcript: String,
@@ -152,21 +152,30 @@ pub fn filter<F: io::Read, O: io::Write>(
             false => to_protein(wt_seq, frame).unwrap()
         };
 
-        // exclude silent mutations
-        if neopeptide == wt_peptide {
-            continue;
-        }
-
-        //check if neopeptide sequence is also found in the reference sequence
-        match ref_set.contains(&neopeptide) {
-            true => (),
-            false => {
-                fasta_writer.write(&format!("{}", id), None, &neopeptide)?;
-                // if we don't have a matching normal, do not write an empty entry to the output
-                if wt_peptide.len() > 0 {
-                    normal_writer.write(&format!("{}", id), None, &wt_peptide)?;}
-                tsv_writer.serialize(row)?;
+        let mut i = 0;
+        while i + 9 < neopeptide.len() {
+            let n_peptide = &neopeptide[i..(i + 9)];
+            let w_peptide = match wt_peptide.len() >= i + 9 {
+                true => &wt_peptide[i..(i + 9)],
+                false => &wt_peptide
+            };
+            i += 1;
+            if n_peptide == w_peptide {
+                continue;
             }
+            let mut row2 = row.clone();
+            row2.id = id.replace("F", &i.to_string());
+            match ref_set.contains(n_peptide) {
+                true => (),
+                false => {
+                    fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
+                    //if we don't have a matching normal, do not write an empty entry to the output
+                    if w_peptide.len() > 0 {
+                        normal_writer.write(&format!("{}", row2.id), None, &w_peptide)?;
+                    }
+                    tsv_writer.serialize(row2)?;
+                }
+             }
         }
     }
     Ok(())

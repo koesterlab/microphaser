@@ -11,7 +11,7 @@ use bio::io::fasta;
 extern crate bincode;
 use bincode::deserialize_from;
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct IDRecord {
     id: String,
     transcript: String,
@@ -105,6 +105,7 @@ pub fn filter<F: io::Read, O: io::Write>(
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
+    println!("Hallo!");
 
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
@@ -122,6 +123,32 @@ pub fn filter<F: io::Read, O: io::Write>(
             true => vec![],
             false => to_protein(wt_seq, frame).unwrap(),
         };
+        println!("Hallo!");
+
+        let i = 0;
+        while i + 8 < neopeptide.len() {
+            println!("{}", i);
+            let n_peptide = &neopeptide[i..(i + 8)];
+            let w_peptide = &wt_peptide[i..(i + 8)];
+            println!("{:?}", n_peptide);
+            if n_peptide == w_peptide {
+                continue;
+            }
+            let row2 = row.clone();
+            match ref_set.contains(n_peptide) {
+                true => (),
+                false => {
+                    fasta_writer.write(&format!("{}", id), None, &n_peptide)?;
+                    //if we don't have a matching normal, do not write an empty entry to the output
+                    if w_peptide.len() > 0 {
+                        normal_writer.write(&format!("{}", id), None, &w_peptide)?;
+                    }
+                    tsv_writer.serialize(row2)?;
+                }
+            }
+
+
+        }
 
         // exclude silent mutations
         if neopeptide == wt_peptide {

@@ -135,20 +135,42 @@ fn test_filter() {
     fs::create_dir("tests/output");
     microphaser_filter(
         "--reference tests/resources/test_filter/reference.binary \
-         --tsv tests/resources/test_filter/info.tsv --tsvoutput tests/output/test_filter.info.tsv \
-         --normaloutput tests/output/test_filter.normal.fa > tests/output/test_filter.tumor.fa",
+         --tsv tests/resources/test_filter/info.tsv --tsvoutput tests/output/info.filtered.tsv \
+         --normaloutput tests/output/normal.filtered.fa > tests/output/tumor.filtered.fa",
     );
     test_output(
-        "tests/output/test_filter.tumor.fa",
+        "tests/output/tumor.filtered.fa",
         "tests/resources/test_filter/expected_output/tumor.filtered.fa",
     );
     test_output(
-        "tests/output/test_filter.normal.fa",
+        "tests/output/normal.filtered.fa",
         "tests/resources/test_filter/expected_output/normal.filtered.fa",
     );
     test_output(
-        "tests/output/test_filter.info.tsv",
+        "tests/output/info.filtered.tsv",
         "tests/resources/test_filter/expected_output/info.filtered.tsv",
+    );
+}
+
+#[test]
+fn test_filter_long() {
+    fs::create_dir("tests/output");
+    microphaser_filter(
+        "--reference tests/resources/test_filter_long/reference.binary \
+         --tsv tests/resources/test_filter_long/info.tsv --tsvoutput tests/output/info.filtered_long.tsv \
+         --normaloutput tests/output/normal.filtered_long.fa > tests/output/tumor.filtered_long.fa",
+    );
+    test_output(
+        "tests/output/tumor.filtered_long.fa",
+        "tests/resources/test_filter_long/expected_output/tumor.filtered_long.fa",
+    );
+    test_output(
+        "tests/output/normal.filtered_long.fa",
+        "tests/resources/test_filter_long/expected_output/normal.filtered_long.fa",
+    );
+    test_output(
+        "tests/output/info.filtered_long.tsv",
+        "tests/resources/test_filter_long/expected_output/info.filtered_long.tsv",
     );
 }
 

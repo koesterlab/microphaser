@@ -74,7 +74,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct IDRecord {
     id: String,
     transcript: String,
