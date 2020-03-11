@@ -32,3 +32,8 @@ args:
       short: n
       default_value: "normal.filtered.fa"
       help: filtered unmutated peptides
+  - peptide-length:
+      long: peptide-length
+      short: l
+      default_value: "9"
+      help: length of output peptides

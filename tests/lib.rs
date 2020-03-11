@@ -134,7 +134,7 @@ fn test_build_ref() {
 fn test_filter() {
     fs::create_dir("tests/output");
     microphaser_filter(
-        "--reference tests/resources/test_filter/reference.binary \
+        "--reference tests/resources/test_filter/reference.binary -l 9 \
          --tsv tests/resources/test_filter/info.tsv --tsvoutput tests/output/info.filtered.tsv \
          --normaloutput tests/output/normal.filtered.fa > tests/output/tumor.filtered.fa",
     );
@@ -156,7 +156,7 @@ fn test_filter() {
 fn test_filter_long() {
     fs::create_dir("tests/output");
     microphaser_filter(
-        "--reference tests/resources/test_filter_long/reference.binary \
+        "--reference tests/resources/test_filter_long/reference.binary -l 9 \
          --tsv tests/resources/test_filter_long/info.tsv --tsvoutput tests/output/info.filtered_long.tsv \
          --normaloutput tests/output/normal.filtered_long.fa > tests/output/tumor.filtered_long.fa",
     );

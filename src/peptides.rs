@@ -101,6 +101,7 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
 pub fn build<F: io::Read>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
+    peptide_length: usize,
 ) -> Result<(), Box<dyn Error>> {
     // build hashSet from reference peptide sequences
     let mut ref_set = HashSet::new();
@@ -115,8 +116,19 @@ pub fn build<F: io::Read>(
         };
         debug!("{}", String::from_utf8_lossy(seq));
         debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
-        let pepseq = to_protein(seq, frame).unwrap();
-        ref_set.insert(pepseq);
+        let base_length = peptide_length * 3;
+        let mut i = 0;
+        while i + base_length < seq.len() {
+            let pepseq = to_protein(&seq[i..(i + base_length)], frame).unwrap();
+            ref_set.insert(pepseq);
+            i += 1;
+        }
+        // let mut i = 0;
+        // while i + peptide_length < pepseq.len() {
+        //     let sequence = &pepseq[i..(i+peptide_length)];
+        //     ref_set.insert(sequence);
+        //     i += 1;
+        // }
 
     }
     // save as binary
@@ -130,7 +142,8 @@ pub fn filter<F: io::Read, O: io::Write>(
     tsv_reader: &mut csv::Reader<F>,
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
-    tsv_writer: &mut csv::Writer<fs::File>
+    tsv_writer: &mut csv::Writer<fs::File>,
+    peptide_length: usize
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
@@ -153,10 +166,11 @@ pub fn filter<F: io::Read, O: io::Write>(
         };
 
         let mut i = 0;
-        while i + 9 < neopeptide.len() {
-            let n_peptide = &neopeptide[i..(i + 9)];
-            let w_peptide = match wt_peptide.len() >= i + 9 {
-                true => &wt_peptide[i..(i + 9)],
+
+        while i + peptide_length < neopeptide.len() {
+            let n_peptide = &neopeptide[i..(i + peptide_length)];
+            let w_peptide = match wt_peptide.len() >= i + peptide_length {
+                true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
             };
             i += 1;

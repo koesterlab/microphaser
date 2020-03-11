@@ -23,9 +23,7 @@ use clap::{App, ArgMatches, SubCommand};
 use bio::io::{fasta, gff};
 use rust_htslib::{bam, bcf};
 
-pub mod build_reference;
 pub mod common;
-pub mod filter;
 pub mod microphasing_wholegenome;
 pub mod peptides;
 pub mod microphasing;
@@ -142,10 +140,15 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .apply()
         .unwrap();
 
+    let peptide_length = value_t!(matches, "peptide-length", usize)?;
     let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
     let binary_writer = File::create(&matches.value_of("output").unwrap())?;
 
-    peptides::build(reference_reader, binary_writer)
+    peptides::build(
+        reference_reader,
+        binary_writer,
+        peptide_length
+    )
 }
 
 pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -161,6 +164,8 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .unwrap();
 
     let reference_reader = File::open(&matches.value_of("reference").unwrap())?;
+
+    let peptide_length = value_t!(matches, "peptide-length", usize)?;
 
     let mut tsv_reader = csv::ReaderBuilder::new()
         .delimiter(b'\t')
@@ -178,6 +183,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut fasta_writer,
         &mut normal_writer,
         &mut tsv_writer,
+        peptide_length,
     )
 }
 
