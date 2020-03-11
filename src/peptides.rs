@@ -118,10 +118,12 @@ pub fn build<F: io::Read>(
         debug!("{}", String::from_utf8_lossy(&seq.to_ascii_uppercase()));
         let base_length = peptide_length * 3;
         let mut i = 0;
-        while i + base_length < seq.len() {
+        while i + base_length <= seq.len() {
             let pepseq = to_protein(&seq[i..(i + base_length)], frame).unwrap();
+            println!{"{:?}", pepseq};
+            println!("{}", i);
             ref_set.insert(pepseq);
-            i += 1;
+            i += 3;
         }
         // let mut i = 0;
         // while i + peptide_length < pepseq.len() {
@@ -153,6 +155,10 @@ pub fn filter<F: io::Read, O: io::Write>(
         let record = record?;
         let row: IDRecord = record.deserialize(None)?;
         let id = &row.id;
+        let somatic_positions = &row.somatic_positions;
+        let som_pos = somatic_positions.parse::<usize>().unwrap();
+        let orientation = *&row.strand.as_str();
+        let offset = *&row.offset as usize;
         let mt_seq = &row.mutant_sequence.as_bytes();
         let wt_seq = &row.normal_sequence.as_bytes();
         let frame = match id.ends_with("F") {
@@ -167,18 +173,31 @@ pub fn filter<F: io::Read, O: io::Write>(
 
         let mut i = 0;
 
-        while i + peptide_length < neopeptide.len() {
+        while i + peptide_length <= neopeptide.len() {
             let n_peptide = &neopeptide[i..(i + peptide_length)];
             let w_peptide = match wt_peptide.len() >= i + peptide_length {
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
             };
+            if w_peptide.len() == 0 {
+                match orientation {
+                    "Forward" => if ((i + peptide_length) * 3) + offset <= som_pos {
+                        i += 1;
+                        continue;
+                    },
+                    "Reverse" => if (neopeptide.len() - (i + peptide_length)) * 3 + offset > som_pos {
+                        i += 1;
+                        continue;
+                    },
+                    _ => ()
+                };
+            }
             i += 1;
             if n_peptide == w_peptide {
                 continue;
             }
             let mut row2 = row.clone();
-            row2.id = id.replace("F", &i.to_string());
+            row2.id = id.replace("F", &i.to_string()).replace("R", &i.to_string());
             match ref_set.contains(n_peptide) {
                 true => (),
                 false => {

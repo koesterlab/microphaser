@@ -175,6 +175,28 @@ fn test_filter_long() {
 }
 
 #[test]
+fn test_filter_fs() {
+    fs::create_dir("tests/output");
+    microphaser_filter(
+        "--reference tests/resources/test_filter_fs/reference.binary -l 9 \
+         --tsv tests/resources/test_filter_fs/info.tsv --tsvoutput tests/output/info.filtered_fs.tsv \
+         --normaloutput tests/output/normal.filtered_fs.fa > tests/output/tumor.filtered_fs.fa",
+    );
+    test_output(
+        "tests/output/tumor.filtered_fs.fa",
+        "tests/resources/test_filter_fs/expected_output/tumor.filtered_fs.fa",
+    );
+    test_output(
+        "tests/output/normal.filtered_fs.fa",
+        "tests/resources/test_filter_fs/expected_output/normal.filtered_fs.fa",
+    );
+    test_output(
+        "tests/output/info.filtered_fs.tsv",
+        "tests/resources/test_filter_fs/expected_output/info.filtered_fs.tsv",
+    );
+}
+
+#[test]
 fn test_forward_somatic() {
     fs::create_dir("tests/output");
     let reference = download_reference("chr14");

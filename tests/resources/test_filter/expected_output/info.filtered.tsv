@@ -1,0 +1,4 @@
+id	transcript	gene_id	gene_name	chrom	offset	freq	depth	nvar	nsomatic	nvariant_sites	nsomvariant_sites	strand	variant_sites	somatic_positions	somatic_aa_change	germline_positions	germline_aa_change	normal_sequence	mutant_sequence
+2_1	Tr2	G2	GeneB	1	1	0.5	20	1	1	1	1	Forward	1	1	G-T			GATCAGGTTACAATTATTACAGATAGG	TATCAGGTTACAATTATTACAGATAGG
+3_1	Tr3	G3	GeneC	1	1	0.5	20	1	1	1	1	Forward	1	1	T-G			AGTACCGATCATATTATTACAGATAGG	AGTACCGATCAGATTATTACAGATAGG
+4_1	Tr4	G4	GeneD	1	1	1.0	20	1	1	1	1	Forward	1	1	T-G				GATAGCATACCGATTATTACAGATAGG
