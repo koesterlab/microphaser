@@ -120,8 +120,6 @@ pub fn build<F: io::Read>(
         let mut i = 0;
         while i + base_length <= seq.len() {
             let pepseq = to_protein(&seq[i..(i + base_length)], frame).unwrap();
-            println!{"{:?}", pepseq};
-            println!("{}", i);
             ref_set.insert(pepseq);
             i += 3;
         }
@@ -156,7 +154,10 @@ pub fn filter<F: io::Read, O: io::Write>(
         let row: IDRecord = record.deserialize(None)?;
         let id = &row.id;
         let somatic_positions = &row.somatic_positions;
-        let som_pos = somatic_positions.parse::<usize>().unwrap();
+        let som_pos = match somatic_positions.contains("|") { 
+            true => 0,
+            false => somatic_positions.parse::<usize>().unwrap()
+        };
         let orientation = *&row.strand.as_str();
         let offset = *&row.offset as usize;
         let mt_seq = &row.mutant_sequence.as_bytes();
@@ -179,7 +180,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
             };
-            if w_peptide.len() == 0 {
+            if w_peptide.len() == 0 && som_pos > 0 {
                 match orientation {
                     "Forward" => if ((i + peptide_length) * 3) + offset <= som_pos {
                         i += 1;
@@ -197,7 +198,10 @@ pub fn filter<F: io::Read, O: io::Write>(
                 continue;
             }
             let mut row2 = row.clone();
-            row2.id = id.replace("F", &i.to_string()).replace("R", &i.to_string());
+            //row2.id = id.replace("F", &i.to_string()).replace("R", &i.to_string());
+            let counter_string = format!("{}_", &i.to_string());
+            let new_id = counter_string + &row2.id;
+            row2.id = new_id;
             match ref_set.contains(n_peptide) {
                 true => (),
                 false => {
