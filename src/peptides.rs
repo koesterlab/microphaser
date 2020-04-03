@@ -147,7 +147,8 @@ pub fn filter<F: io::Read, O: io::Write>(
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
-
+    let mut current = (String::from(""), String::from(""));
+    let mut seen_peptides = HashSet::new();
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
@@ -174,8 +175,10 @@ pub fn filter<F: io::Read, O: io::Write>(
 
         let mut i = 0;
 
-        while i + peptide_length <= neopeptide.len() {
-            let n_peptide = &neopeptide[i..(i + peptide_length)];
+        let current_neo = neopeptide.clone();
+
+        while i + peptide_length <= current_neo.len() {
+            let n_peptide = &current_neo[i..(i + peptide_length)];
             let w_peptide = match wt_peptide.len() >= i + peptide_length {
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
@@ -197,6 +200,20 @@ pub fn filter<F: io::Read, O: io::Write>(
             if n_peptide == w_peptide {
                 continue;
             }
+
+            let transcript = &row.transcript;
+            let vars = &row.variant_sites;
+            if (transcript.to_string(), vars.to_string()) == current {
+                if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
+                    continue;
+                }
+            }
+            else {
+                current = (transcript.to_string(), vars.to_string());
+                seen_peptides = HashSet::new();
+            }
+            let current_peptide = String::from_utf8_lossy(n_peptide);
+            seen_peptides.insert(current_peptide.to_string());
             let mut row2 = row.clone();
             //row2.id = id.replace("F", &i.to_string()).replace("R", &i.to_string());
             let counter_string = format!("{}_", &i.to_string());
