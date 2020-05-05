@@ -430,7 +430,8 @@ impl ObservationMatrix {
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
-        is_short_exon: bool
+        is_short_exon: bool,
+        has_frameshift: bool
     ) -> Result<Vec<HaplotypeSeq>, Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
@@ -459,6 +460,10 @@ impl ObservationMatrix {
         };
 
         let mut haplotypes_vec = Vec::new();
+        // If there are no reads covering the window, fill with normal sequence and mark - important for gaps in coverage (see frameshifts)
+        if haplotypes.is_empty() {
+            haplotypes.insert(0, 0);
+        }
 
         for (haplotype, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
@@ -481,7 +486,6 @@ impl ObservationMatrix {
             let mut variant_profile = Vec::new();
             //let mut somatic_profile = Vec::new();
             if variants.is_empty() {
-                debug!("HA");
                 debug!("Test {}", offset - gene.start());
                 germline_seq.extend(
                     &refseq[(offset - gene.start()) as usize
@@ -491,122 +495,121 @@ impl ObservationMatrix {
                     &refseq[(offset - gene.start()) as usize
                         ..(offset + window_len - gene.start()) as usize],
                 );
-                debug!("HAHA");
             //continue;
-        } else {
-            while i < window_end {
-                debug!("window_end: {}", window_end);
-                debug!("i: {}", i);
-                debug!("j: {}", j);
-                // TODO what happens if a deletion starts upstream of window and overlaps it
+            } else {
+                while i < window_end {
+                    debug!("window_end: {}", window_end);
+                    debug!("i: {}", i);
+                    debug!("j: {}", j);
+                    // TODO what happens if a deletion starts upstream of window and overlaps it
 
-                while j < variants.len() && i == variants[j].pos() {
-                    debug!("j: {}, variantpos: {}", j, variants[j].pos());
-                    let bit_pos = match transcript.strand {
-                        PhasingStrand::Reverse => j,
-                        PhasingStrand::Forward => variants.len() - 1 -j,
-                    };
-                    debug!("frameshift: {}", variants[j].frameshift());
-                    if bitvector_is_set(haplotype, bit_pos) {
-                        debug!("Haplotype: {} ; j: {}", haplotype, j);
-                        // if (j + 1) < variants.len() && i == variants[j + 1].pos() {
-                        //     j += 1;
-                        // }
-                        match variants[j] {
-                            // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
-                            &Variant::SNV { alt, .. } => {
-                                debug!("Variant: SNV");
-                                match variants[j].is_germline() {
-                                    true => germline_seq.push(switch_ascii_case(
+                    while j < variants.len() && i == variants[j].pos() {
+                        debug!("j: {}, variantpos: {}", j, variants[j].pos());
+                        let bit_pos = match transcript.strand {
+                            PhasingStrand::Reverse => j,
+                            PhasingStrand::Forward => variants.len() - 1 -j,
+                        };
+                        debug!("frameshift: {}", variants[j].frameshift());
+                        if bitvector_is_set(haplotype, bit_pos) {
+                            debug!("Haplotype: {} ; j: {}", haplotype, j);
+                            // if (j + 1) < variants.len() && i == variants[j + 1].pos() {
+                            //     j += 1;
+                            // }
+                            match variants[j] {
+                                // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
+                                &Variant::SNV { alt, .. } => {
+                                    debug!("Variant: SNV");
+                                    match variants[j].is_germline() {
+                                        true => germline_seq.push(switch_ascii_case(
+                                            alt,
+                                            refseq[(i - gene.start()) as usize],
+                                        )),
+                                        false => {
+                                            germline_seq.push(refseq[(i - gene.start()) as usize])
+                                        }
+                                    }
+                                    seq.push(switch_ascii_case(
                                         alt,
                                         refseq[(i - gene.start()) as usize],
-                                    )),
-                                    false => {
-                                        germline_seq.push(refseq[(i - gene.start()) as usize])
-                                    }
+                                    ));
+                                    i += 1;
                                 }
-                                seq.push(switch_ascii_case(
-                                    alt,
-                                    refseq[(i - gene.start()) as usize],
-                                ));
-                                i += 1;
-                            }
-                            // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
-                            &Variant::Insertion { seq: ref s, .. } => {
-                                debug!("Variant: INS");
-                                match variants[j].is_germline() {
-                                    true => germline_seq.extend(
+                                // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
+                                &Variant::Insertion { seq: ref s, .. } => {
+                                    debug!("Variant: INS");
+                                    match variants[j].is_germline() {
+                                        true => germline_seq.extend(
+                                            switch_ascii_case_vec(
+                                                s,
+                                                refseq[(i - gene.start()) as usize],
+                                            )
+                                            .into_iter(),
+                                        ),
+                                        false => indel = true,
+                                    }
+                                    seq.extend(
                                         switch_ascii_case_vec(
                                             s,
                                             refseq[(i - gene.start()) as usize],
                                         )
                                         .into_iter(),
-                                    ),
-                                    false => indel = true,
-                                }
-                                seq.extend(
-                                    switch_ascii_case_vec(
-                                        s,
-                                        refseq[(i - gene.start()) as usize],
-                                    )
-                                    .into_iter(),
-                                );
-                                //indel = true;
-                                i += 1;
-                                if strand == "Forward" {
-                                    window_end -= (s.len() as u32) - 1;
-                                } else {
-                                    window_end -= s.len() as u32 - variants[j].frameshift() - 1;
-                                }
-                            }
-                            // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
-                            &Variant::Deletion { len, .. } => {
-                                debug!("Variant: DEL");
-                                match variants[j].is_germline() {
-                                    true => {
-                                        germline_seq.push(refseq[(i - gene.start()) as usize])
+                                    );
+                                    //indel = true;
+                                    i += 1;
+                                    if strand == "Forward" {
+                                        window_end -= (s.len() as u32) - 1;
+                                    } else {
+                                        window_end -= s.len() as u32 - variants[j].frameshift() - 1;
                                     }
-                                    false => indel = true,
                                 }
-                                seq.push(refseq[(i - gene.start()) as usize]);
-                                //indel = true;
-                                i += len + 1;
-                                // if strand == "Forward" {
-                                //     window_end += len;
-                                // } else {
-                                //     window_end += len - variants[j].frameshift();
-                                // }
+                                // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
+                                &Variant::Deletion { len, .. } => {
+                                    debug!("Variant: DEL");
+                                    match variants[j].is_germline() {
+                                        true => {
+                                            germline_seq.push(refseq[(i - gene.start()) as usize])
+                                        }
+                                        false => indel = true,
+                                    }
+                                    seq.push(refseq[(i - gene.start()) as usize]);
+                                    //indel = true;
+                                    i += len + 1;
+                                    // if strand == "Forward" {
+                                    //     window_end += len;
+                                    // } else {
+                                    //     window_end += len - variants[j].frameshift();
+                                    // }
+                                }
                             }
-                        }
 
-                        // counting somatic variants
-                        if !variants[j].is_germline() {
-                            n_somatic += 1;
-                            variant_profile.push(2);
+                            // counting somatic variants
+                            if !variants[j].is_germline() {
+                                n_somatic += 1;
+                                variant_profile.push(2);
+                            } else {
+                                variant_profile.push(1);
+                            }
+                            // counting total number of variants
+                            n_variants += 1;
+
+                            j += 1;
                         } else {
-                            variant_profile.push(1);
+                            variant_profile.push(0);
+                            j += 1;
                         }
-                        // counting total number of variants
-                        n_variants += 1;
-
-                        j += 1;
-                    } else {
-                        variant_profile.push(0);
-                        j += 1;
                     }
+                    // if no variant, just push the reference sequence
+                    if i < window_end {
+                        seq.push(refseq[(i - gene.start()) as usize]);
+                        germline_seq.push(refseq[(i - gene.start()) as usize]);
+                        i += 1;
+                    }
+                    debug!("Sequence: {:?}", seq);
                 }
-                // if no variant, just push the reference sequence
-                if i < window_end {
-                    seq.push(refseq[(i - gene.start()) as usize]);
-                    germline_seq.push(refseq[(i - gene.start()) as usize]);
-                    i += 1;
-                }
-                debug!("Sequence: {:?}", seq);
+                debug!("all variants {}; som variants: {}", n_variants, n_somatic);
             }
-            debug!("all variants {}; som variants: {}", n_variants, n_somatic);
-        }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
-            if indel {
+            if indel || has_frameshift {
                 debug!("indel");
                 germline_seq.clear();
             }
@@ -793,7 +796,7 @@ impl ObservationMatrix {
                         let mut normseq = refseq
                             [(offset - start - gene.start()) as usize..(offset - gene.start()) as usize]
                             .to_vec();
-                        match indel == false {//normal_peptide.len() > 0 {
+                        match (indel || has_frameshift) == false {//normal_peptide.len() > 0 {
                             true => {
                                 normseq.extend(&germline_seq[..(this_window_len - 3) as usize]);
                             },
@@ -937,7 +940,7 @@ impl ObservationMatrix {
             haplotypes_vec.push(hap_seq);
 
             // write neopeptides, information and matching normal peptide to files
-            if record.nsomatic > 0 && !(is_short_exon){
+            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon){
                 fasta_writer.write(&format!("{}", record.id), None, &seq[..this_window_len as usize])?;
                 if germline_seq.len() > 0 {
                     normal_writer.write(
@@ -1013,31 +1016,34 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         if !(transcript.is_coding()) {
             continue;
         }
+        let exon_number = transcript.exons.len();
+        debug!("Number of Exons in Transcript: {}", exon_number);
         debug!("Transcript strand orientation: {:?}", transcript.strand);
         let mut observations = ObservationMatrix::new();
         let mut frameshifts = BTreeMap::new();
         frameshifts.insert(0, 0);
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
+        let mut is_last_exon = false;
         // Haplotypes from the end of the last exon
         let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         // Variable showing exon count
-        let mut exon_number = 0;
+        let mut exon_count = 0;
         for exon in &transcript.exons {
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
             if exon.start > exon.end {
                 continue;
             }
-            exon_number += 1;
+            exon_count += 1;
             debug!("Exon Length: {}", exon.end - exon.start);
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let exon_len = exon.end - exon.start;
             debug!("Exon Rest: {}", exon_rest);
-            let current_exon_offset = match exon_number { 
+            let current_exon_offset = match exon_count { 
                 1 => exon.frame, //u32::from_str(exon.frame).unwrap(),
                 _ => match exon_rest {
                     0 => 0,
@@ -1045,7 +1051,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 },
             };
             debug!("Exon Offset: {}", current_exon_offset);
-            let is_short_exon = window_len > exon_len - current_exon_offset;
+            is_last_exon = exon_count as usize == exon_number;
+            let is_short_exon = window_len >= exon_len - current_exon_offset;
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let mut exon_window_len = match is_short_exon {
                 false => window_len,
@@ -1228,7 +1235,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if s > 0 {
                             let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
                             for s_ in previous {
-                                frameshifts.insert(variant.end_pos(), s + s_);
+                                frameshifts.insert(variant.end_pos(), s_);
                             }
                         }
                     }
@@ -1238,20 +1245,27 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     for (_, &frameshift) in frameshifts.range(..offset) {
                         // possible shift if exon starts with the rest of a split codon (splicing)
+                        debug!("Frameshift: {}", frameshift);
                         let coding_shift = match transcript.strand {
                             PhasingStrand::Forward => offset - exon.start,
                             PhasingStrand::Reverse => exon.end - offset,
                         };
-                        debug!("Offset - Exonstart % 3: {}", coding_shift % 3);
-                        debug!("Shift: {}", frameshift + current_exon_offset);
-                        if coding_shift % 3 == frameshift + current_exon_offset {
+                        let mut has_frameshift = frameshift > 0;
+                        debug!("Coding Shift: {}", coding_shift);
+                        debug!("Current Exon Offset: {}", current_exon_offset);
+                        debug!("Coding Shift % 3: {}", coding_shift % 3);
+                        debug!("Shift: {}", (frameshift + current_exon_offset) % 3);
+                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 {
                             // print haplotypes
                             debug!("Should print haplotypes");
-                            // possible unfinished codon at the end of an exon that continues at the start of the next exon
-                            exon_rest = match transcript.strand {
-                                PhasingStrand::Forward => exon.end - (offset + exon_window_len),
-                                PhasingStrand::Reverse => offset - exon.start,
-                            };
+                            if !has_frameshift {
+                                //follows the main ORF - not including frameshifts!
+                                // possible unfinished codon at the end of an exon that continues at the start of the next exon
+                                exon_rest = match transcript.strand {
+                                    PhasingStrand::Forward => exon.end - (offset + exon_window_len),
+                                    PhasingStrand::Reverse => offset - exon.start,
+                                };
+                            }
                             debug!("Exon Rest {}", exon_rest);
                             if exon_rest < 3 && (!is_short_exon) {
                                 prev_hap_vec = observations
@@ -1266,7 +1280,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         fasta_writer,
                                         tsv_writer,
                                         normal_writer,
-                                        is_short_exon
+                                        is_short_exon,
+                                        has_frameshift
                                     )
                                     .unwrap();
                             } else {
@@ -1282,7 +1297,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         fasta_writer,
                                         tsv_writer,
                                         normal_writer,
-                                        is_short_exon
+                                        is_short_exon,
+                                        has_frameshift
                                     )
                                     .unwrap();
                             }
@@ -1395,6 +1411,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     }
 
                                     let mut splice_offset = 0;
+                                    if (transcript.strand == PhasingStrand::Reverse) && (exon_rest < 3) {
+                                        splice_offset += exon_rest;
+                                    }
                                     debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
                                     debug!("WT_Seq len {}", new_wt_sequence.len() as u32);
                                     while splice_offset + window_len <= new_mt_sequence.len() as u32
@@ -1457,7 +1476,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 }
                             }
                         }
-                        if is_short_exon {
+                        if is_short_exon && !is_last_exon {
                             prev_hap_vec = new_hap_vec;
                         }
                         else {
