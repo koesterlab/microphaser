@@ -18,7 +18,7 @@ use rust_htslib::{bam, bcf};
 
 use bio_types::strand::Strand;
 
-use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand};
+use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand, IDRecord};
 
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
@@ -74,7 +74,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+/* #[derive(Debug, Serialize, Clone)]
 pub struct IDRecord {
     id: String,
     transcript: String,
@@ -82,6 +82,7 @@ pub struct IDRecord {
     gene_name: String,
     chrom: String,
     offset: u32,
+    frame: u32,
     freq: f64,
     depth: u32,
     nvar: u32,
@@ -191,6 +192,7 @@ impl IDRecord {
             gene_name: self.gene_name.to_owned(),
             chrom: self.chrom.to_owned(),
             offset: offset + self.offset,
+            frame: self.frame,
             freq: self.freq * rec.freq,
             depth: self.depth,
             nvar: nvariants,
@@ -227,6 +229,7 @@ impl IDRecord {
             gene_name: self.gene_name.to_owned(),
             chrom: self.chrom.to_owned(),
             offset: self.offset,
+            frame: self.frame,
             freq: self.freq + freq,
             depth: self.depth,
             nvar: new_nvar,
@@ -243,7 +246,7 @@ impl IDRecord {
             mutant_sequence: self.mutant_sequence.to_owned(),
         }
     }
-}
+} */
 
 #[derive(Debug)]
 pub struct HaplotypeSeq {
@@ -431,7 +434,7 @@ impl ObservationMatrix {
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
         is_short_exon: bool,
-        has_frameshift: bool
+        frame: u32
     ) -> Result<Vec<HaplotypeSeq>, Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
@@ -458,6 +461,9 @@ impl ObservationMatrix {
             PhasingStrand::Reverse => "Reverse",
             PhasingStrand::Forward => "Forward",
         };
+
+        // frameshift
+        let has_frameshift = frame > 0;
 
         let mut haplotypes_vec = Vec::new();
         // If there are no reads covering the window, fill with normal sequence and mark - important for gaps in coverage (see frameshifts)
@@ -714,6 +720,7 @@ impl ObservationMatrix {
                 gene_name: gene.name.to_owned(),
                 chrom: gene.chrom.to_owned(),
                 offset: offset,
+                frame: frame,
                 freq: freq,
                 depth: depth,
                 nvar: n_variants,
@@ -836,6 +843,7 @@ impl ObservationMatrix {
                     gene_name: gene.name.to_owned(),
                     chrom: gene.chrom.to_owned(),
                     offset: offset,
+                    frame: frame,
                     freq: freq,
                     nvar: n_variants,
                     depth: depth,
@@ -1024,7 +1032,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         frameshifts.insert(0, 0);
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
-        let mut is_last_exon = false;
         // Haplotypes from the end of the last exon
         let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
@@ -1051,7 +1058,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 },
             };
             debug!("Exon Offset: {}", current_exon_offset);
-            is_last_exon = exon_count as usize == exon_number;
+            let is_last_exon = exon_count as usize == exon_number;
             let is_short_exon = window_len >= exon_len - current_exon_offset;
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let mut exon_window_len = match is_short_exon {
@@ -1281,7 +1288,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         tsv_writer,
                                         normal_writer,
                                         is_short_exon,
-                                        has_frameshift
+                                        frameshift
                                     )
                                     .unwrap();
                             } else {
@@ -1298,7 +1305,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         tsv_writer,
                                         normal_writer,
                                         is_short_exon,
-                                        has_frameshift
+                                        frameshift
                                     )
                                     .unwrap();
                             }

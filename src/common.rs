@@ -260,3 +260,177 @@ impl Interval {
         }
     }
 }
+
+#[derive(Deserialize, Debug, Serialize, Clone)]
+pub struct IDRecord{
+    pub id: String,
+    pub transcript: String,
+    pub gene_id: String,
+    pub gene_name: String,
+    pub chrom: String,
+    pub offset: u32,
+    pub frame: u32,
+    pub freq: f64,
+    pub depth: u32,
+    pub nvar: u32,
+    pub nsomatic: u32,
+    pub nvariant_sites: u32,
+    pub nsomvariant_sites: u32,
+    pub strand: String,
+    pub variant_sites: String,
+    pub somatic_positions: String,
+    pub somatic_aa_change: String,
+    pub germline_positions: String,
+    pub germline_aa_change: String,
+    pub normal_sequence: String,
+    pub mutant_sequence: String
+}
+
+impl IDRecord {
+    pub fn update(&self, rec: &IDRecord, offset: u32, wt_seq: Vec<u8>, mt_seq: Vec<u8>) -> Self {
+        debug!("Start updating record");
+        let mut shaid = sha1::Sha1::new();
+        // generate unique haplotype ID containing position, transcript and sequence
+        let id = format!("{:?}{}{}", &mt_seq, &self.transcript, offset);
+        shaid.update(id.as_bytes());
+        let fasta_id = format!(
+            "{}{}",
+            &shaid.digest().to_string()[..15],
+            self.strand.chars().next().unwrap()
+        );
+
+        let somatic_positions = self.somatic_positions.split("|");
+        let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split("|").collect();
+        let other_somatic_aa_change: Vec<&str> = rec.somatic_aa_change.split("|").collect();
+        let germline_positions = self.germline_positions.split("|");
+        let germline_aa_change: Vec<&str> = self.germline_aa_change.split("|").collect();
+        let other_germline_aa_change: Vec<&str> = rec.germline_aa_change.split("|").collect();
+
+        let mut s_p_vec = Vec::new();
+        let mut g_p_vec = Vec::new();
+        let mut s_aa_vec = Vec::new();
+        let mut g_aa_vec = Vec::new();
+
+        let mut nvariants = 0;
+        let mut nsomatic = 0;
+
+        let mut c = 0;
+
+        for p in somatic_positions {
+            debug!("{}", p);
+            if p == "" {
+                break;
+            }
+            if self.offset + offset <= p.parse::<u32>().unwrap() {
+                s_p_vec.push(p.to_string());
+                s_aa_vec.push(somatic_aa_change[c]);
+                nsomatic += 1;
+                nvariants += 1;
+            }
+            c += 1;
+        }
+        c = 0;
+        for p in rec.somatic_positions.split("|") {
+            debug!("{}", p);
+            if p == "" {
+                break;
+            }
+            if rec.offset >= p.parse::<u32>().unwrap() - offset {
+                debug!("hey");
+                s_p_vec.push(p.to_string());
+                s_aa_vec.push(other_somatic_aa_change[c]);
+                nsomatic += 1;
+                nvariants += 1;
+                debug!("{}", nsomatic);
+            }
+            c += 1
+        }
+        c = 0;
+        for p in germline_positions {
+            debug!("{}", p);
+            if p == "" {
+                break;
+            }
+            if self.offset + offset <= p.parse::<u32>().unwrap() {
+                g_p_vec.push(p.to_string());
+                g_aa_vec.push(germline_aa_change[c]);
+                nvariants += 1;
+            }
+            c += 1;
+        }
+        c = 0;
+        for p in rec.germline_positions.split("|") {
+            if p == "" {
+                break;
+            }
+            if rec.offset >= p.parse::<u32>().unwrap() - offset {
+                g_p_vec.push(p.to_string());
+                g_aa_vec.push(other_germline_aa_change[c]);
+                nvariants += 1;
+            }
+            c += 1;
+        }
+
+        debug!("nvars {} {}", self.nvar, rec.nvar);
+        IDRecord {
+            id: fasta_id,
+            transcript: self.transcript.to_owned(),
+            gene_id: self.gene_id.to_owned(),
+            gene_name: self.gene_name.to_owned(),
+            chrom: self.chrom.to_owned(),
+            offset: offset + self.offset,
+            frame: self.frame,
+            freq: self.freq * rec.freq,
+            depth: self.depth,
+            nvar: nvariants,
+            nsomatic: nsomatic,
+            nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
+            nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
+            strand: self.strand.to_owned(),
+            variant_sites: self.variant_sites.to_owned() + &rec.variant_sites,
+            somatic_positions: s_p_vec.join("|"),
+            somatic_aa_change: s_aa_vec.join("|"),
+            germline_positions: g_p_vec.join("|"),
+            germline_aa_change: g_aa_vec.join("|"),
+            normal_sequence: String::from_utf8(wt_seq).unwrap(),
+            mutant_sequence: String::from_utf8(mt_seq).unwrap(),
+        }
+    }
+
+    pub fn add_freq(&self, freq: f64) -> Self {
+        let new_nvar = match self.nvar == 0 {
+            true => self.nvar,
+            false => match freq {
+                f if f > 0.0 => self.nvar - 1,
+                _ => self.nvar,
+            },
+        };
+        let new_somatic = match new_nvar < self.nsomatic {
+            true => self.nsomatic - 1,
+            false => self.nsomatic,
+        };
+        IDRecord {
+            id: self.id.to_owned(),
+            transcript: self.transcript.to_owned(),
+            gene_id: self.gene_id.to_owned(),
+            gene_name: self.gene_name.to_owned(),
+            chrom: self.chrom.to_owned(),
+            offset: self.offset,
+            frame: self.frame,
+            freq: self.freq + freq,
+            depth: self.depth,
+            nvar: new_nvar,
+            nsomatic: new_somatic,
+            nvariant_sites: self.nvariant_sites,
+            nsomvariant_sites: self.nsomvariant_sites,
+            strand: self.strand.to_owned(),
+            variant_sites: self.variant_sites.to_owned(),
+            somatic_positions: self.somatic_positions.to_owned(),
+            somatic_aa_change: self.somatic_aa_change.to_owned(),
+            germline_positions: self.germline_positions.to_owned(),
+            germline_aa_change: self.germline_aa_change.to_owned(),
+            normal_sequence: self.normal_sequence.to_owned(),
+            mutant_sequence: self.mutant_sequence.to_owned(),
+        }
+    }
+}

@@ -11,7 +11,9 @@ use alphabets::dna;
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
 
-#[derive(Deserialize,Debug,Serialize, Clone)]
+use crate::common::IDRecord;
+
+/* #[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct IDRecord{
     id: String,
     transcript: String,
@@ -19,6 +21,7 @@ pub struct IDRecord{
     gene_name: String,
     chrom: String,
     offset: u32,
+    frame: u32,
     freq: f64,
     depth: u32,
     nvar: u32,
@@ -33,7 +36,7 @@ pub struct IDRecord{
     germline_aa_change: String,
     normal_sequence: String,
     mutant_sequence: String
-}
+} */
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
     // data structure for mapping codons to amino acids
@@ -149,6 +152,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
     let mut current = (String::from(""), String::from(""));
     let mut seen_peptides = HashSet::new();
+    let mut stop_gained = vec![];
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
@@ -175,10 +179,26 @@ pub fn filter<F: io::Read, O: io::Write>(
 
         let mut i = 0;
 
+        //if Stop Codon in peptide, remove downstream peptides
+        let mut check = row.transcript.clone();
+        check.push_str(&row.frame.to_string());
+        if stop_gained.contains(&check) {
+            continue;
+        }
+        if neopeptide.contains(&"X".as_bytes()[0]) && (row.freq == (1 as f64) || row.frame > 0) {
+            let mut tuple = row.transcript.clone();
+            tuple.push_str(&row.frame.to_string());
+            stop_gained.push(tuple);
+        }
+
         let current_neo = neopeptide.clone();
 
         while i + peptide_length <= current_neo.len() {
             let n_peptide = &current_neo[i..(i + peptide_length)];
+            //Terminate at stop codon
+            if n_peptide.contains(&"X".as_bytes()[0]) {
+                break;
+            }
             let w_peptide = match wt_peptide.len() >= i + peptide_length {
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
