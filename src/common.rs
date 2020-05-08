@@ -259,6 +259,15 @@ impl Interval {
             }
         }
     }
+/*     pub fn update(&mut self, start: u32, end: u32, frame: &str) -> Result<(), Box<dyn Error>> {
+        self.start = start;
+        self.end = end;
+        self.frame = match frame {
+            "." => 0 as u32,
+            _ => u32::from_str(frame).unwrap(),
+        };
+        Ok(())
+    } */
 }
 
 #[derive(Deserialize, Debug, Serialize, Clone)]

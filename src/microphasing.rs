@@ -1619,6 +1619,22 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         record.frame()
                     ));
             }
+/*             "CDS" => {
+                debug!("CDS found");
+                // register exon
+                gene.as_mut()
+                    .expect("no gene record before exon in GTF")
+                    .transcripts
+                    .last_mut()
+                    .expect("no transcript record before exon in GTF")
+                    .exons
+                    .last_mut()
+                    .expect("no exon record before start codon in GTF")
+                    .update(*record.start() as u32 -1,
+                        *record.end() as u32,
+                        record.frame())
+                        .unwrap();
+            } */
             "start_codon" => {
                 if record.strand() == Some(Strand::Forward) {
                     gene.as_mut()
@@ -1642,7 +1658,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .end = *record.end() as u32;
                 }
             }
-            "stop_codon" => {
+/*             "stop_codon" => {
                 if record.strand() == Some(Strand::Forward) {
                     gene.as_mut()
                         .expect("no gene record before stop_codon in GTF")
@@ -1652,7 +1668,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .exons
                         .last_mut()
                         .expect("no exon record before stop codon in GTF")
-                        .end = *record.end() as u32;
+                        .end = *record.start() as u32 - 1;
                 } else {
                     debug!("stop_codon_start {}", *record.start() as u32 - 1);
                     gene.as_mut()
@@ -1665,7 +1681,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .expect("no exon record before stop codon in GTF")
                         .start = *record.start() as u32 - 1;
                 }
-            }
+            } */
             _ => continue,
         }
     }

@@ -159,9 +159,13 @@ pub fn filter<F: io::Read, O: io::Write>(
         let row: IDRecord = record.deserialize(None)?;
         let id = &row.id;
         let somatic_positions = &row.somatic_positions;
-        let som_pos = match somatic_positions.contains("|") { 
+        let frameshift = row.frame;
+        let som_pos = match somatic_positions.is_empty() {
             true => 0,
-            false => somatic_positions.parse::<usize>().unwrap()
+            false => match somatic_positions.contains("|") { 
+                true => 0,
+                false => somatic_positions.parse::<usize>().unwrap()
+            }
         };
         let orientation = *&row.strand.as_str();
         let offset = *&row.offset as usize;
