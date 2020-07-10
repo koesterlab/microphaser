@@ -159,8 +159,10 @@ pub fn filter<F: io::Read, O: io::Write>(
         let row: IDRecord = record.deserialize(None)?;
         let id = &row.id;
         let somatic_positions = &row.somatic_positions;
-        let frameshift = row.frame;
+        // get position of somatic variant
         let som_pos = match somatic_positions.is_empty() {
+            // no somatic variant in peptide, but still a neopeptide 
+            // -> downstream of frameshift, keep complete sequence
             true => 0,
             false => match somatic_positions.contains("|") { 
                 true => 0,
@@ -183,7 +185,7 @@ pub fn filter<F: io::Read, O: io::Write>(
 
         let mut i = 0;
 
-        //if Stop Codon in peptide, remove downstream peptides
+        // if Stop Codon in peptide, remove downstream peptides
         let mut check = row.transcript.clone();
         check.push_str(&row.frame.to_string());
         if stop_gained.contains(&check) {
@@ -196,10 +198,10 @@ pub fn filter<F: io::Read, O: io::Write>(
         }
 
         let current_neo = neopeptide.clone();
-
+        // iterate over the peptide in variable-length windows
         while i + peptide_length <= current_neo.len() {
             let n_peptide = &current_neo[i..(i + peptide_length)];
-            //Terminate at stop codon
+            // Terminate at stop codon
             if n_peptide.contains(&"X".as_bytes()[0]) {
                 break;
             }
@@ -207,6 +209,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
             };
+            // skip smaller peptides not containing a somatic variant
             if w_peptide.len() == 0 && som_pos > 0 {
                 match orientation {
                     "Forward" => if ((i + peptide_length) * 3) + offset <= som_pos {
@@ -221,10 +224,11 @@ pub fn filter<F: io::Read, O: io::Write>(
                 };
             }
             i += 1;
+            // remove self-similar peptides
             if n_peptide == w_peptide {
                 continue;
             }
-
+            // check if we already saw this peptide in this transcript
             let transcript = &row.transcript;
             let vars = &row.variant_sites;
             if (transcript.to_string(), vars.to_string()) == current {
@@ -243,6 +247,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             let counter_string = format!("{}_", &i.to_string());
             let new_id = counter_string + &row2.id;
             row2.id = new_id;
+            // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
                 true => (),
                 false => {
