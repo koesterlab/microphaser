@@ -1508,7 +1508,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     }
                                     debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
                                     debug!("WT_Seq len {}", new_wt_sequence.len() as u32);
-                                    while splice_offset + window_len <= (new_mt_sequence.len() - 3) as u32
+                                    let mut end_offset = 3;
+                                    if is_last_exon_window {
+                                        end_offset = 0;
+                                    }
+                                    while splice_offset + window_len <= (new_mt_sequence.len() - end_offset) as u32
                                     {
                                         debug!("splice offset: {}", splice_offset);
                                         debug!("splice offset + windowlen: {}", splice_offset + window_len);
