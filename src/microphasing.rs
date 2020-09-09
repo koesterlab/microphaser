@@ -619,7 +619,7 @@ impl ObservationMatrix {
                 debug!("all variants {}; som variants: {}", n_variants, n_somatic);
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
-            if indel || has_frameshift {
+            if indel || (has_frameshift && germline_seq != seq) {
                 debug!("indel");
                 germline_seq.clear();
             }
