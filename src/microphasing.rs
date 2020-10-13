@@ -689,12 +689,12 @@ impl ObservationMatrix {
                     match variant_profile[c as usize] {
                         // somatic
                         2 => {
-                            somatic_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            somatic_var_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                             somatic_p_changes_vec.push(variants[c as usize].prot_change());
                         },
                         // germline
                         1 => {
-                            germline_var_pos_vec.push(variants[c as usize].pos().to_string());
+                            germline_var_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                             germline_p_changes_vec.push(variants[c as usize].prot_change());
                         },
                         // not present in this haplotype
@@ -703,14 +703,14 @@ impl ObservationMatrix {
                     // check if variant position is already in the variant_site list
                     if c == 0 {
                         n_variantsites += 1;
-                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
+                        variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                         if !(variants[c as usize].is_germline()) {
                             n_som_variantsites += 1;
                         }
                     }
                     else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                         n_variantsites += 1;
-                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
+                        variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                         if !(variants[c as usize].is_germline()) {
                             n_som_variantsites += 1;
                         }
@@ -726,8 +726,8 @@ impl ObservationMatrix {
             let variantsites_pos = variantsites_pos_vec.join("|");
 
             let inframe_offset = match splice_pos {
-                0 => offset,
-                _ => offset + splice_gap
+                0 => offset + 1,
+                _ => offset + 1 + splice_gap
             };
 
             // build the info record
