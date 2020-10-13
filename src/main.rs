@@ -174,6 +174,9 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut tsv_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(matches.value_of("tsvoutput").unwrap())?;
+    let mut removed_writer = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(matches.value_of("similaroutput").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
@@ -183,6 +186,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut fasta_writer,
         &mut normal_writer,
         &mut tsv_writer,
+        &mut removed_writer,
         peptide_length,
     )
 }

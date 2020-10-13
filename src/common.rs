@@ -24,7 +24,7 @@ impl Annotation {
         };
         let pc = match info {
             "" => "".to_string(),
-            _ => info.split('|').nth(10).unwrap().to_string(),
+            _ => info.split('|').nth(11).unwrap().to_string(),
         }; //info.split('|').nth(10).unwrap().to_string();
         Annotation { prot_change: pc }
     }

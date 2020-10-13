@@ -729,7 +729,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             };
             debug!("Exon Offset: {}", current_exon_offset);
             let is_short_exon = window_len >= (exon_len - 3);
-            debug!("{}", is_short_exon);
+            debug!("Short Exon: {}", is_short_exon);
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let exon_window_len = match is_short_exon {
                 false => window_len,
@@ -748,9 +748,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             } else {
                 exon.start + current_exon_offset
             };
+            let mut reached_end = false;
             debug!("Exon window lenght: {}", exon_window_len);
             debug!("Starting Offset of the Exon: {}", offset);
             let mut old_offset = offset;
+            let mut old_end = old_offset + exon_window_len;
             debug!("Variants left from previous Exon: {}", last_window_vars);
             observations.shrink_left(last_window_vars);
             last_window_vars = 0;
@@ -808,7 +810,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     }
                 };
                 is_first_exon_window = false;
-                debug!("Offset {}, old offset {}", splice_side_offset, old_offset);
+                debug!("Splice_offset {}, Offset {}, old offset {}", splice_side_offset, offset, old_offset);
                 debug!("WinStart {}, WinEnd {}", splice_side_offset, splice_end);
 
                 // advance window to next position
@@ -824,12 +826,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // first window in the exon, all variants found are newly added
                 let added_vars = if offset == old_offset {
                     nvars
+                } else if is_short_exon {
+                    0
+                // has already added last variants in a previous iterations
+                } else if reached_end {
+                    0
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
-                } else if offset > old_offset {
+                } else if splice_side_offset > old_offset {
                     Itertools::flatten(
                         variant_tree
-                            .range((old_offset + exon_window_len)..(splice_end))
+                            .range((old_end)..(splice_end))
                             .map(|var| var.1),
                     )
                     .count()
@@ -842,20 +849,28 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // first window in the exon, no variants are deleted
                 let deleted_vars = if offset == old_offset {
                     0
+                } else if is_short_exon {
+                    0
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
-                } else if offset > old_offset {
+                } else if splice_side_offset > old_offset {
                     Itertools::flatten(variant_tree.range(old_offset..splice_side_offset).map(|var| var.1))
                         .count()
                 // reverse orientation
                 } else {
                     Itertools::flatten(
                         variant_tree
-                            .range((splice_end)..(old_offset + exon_window_len))
+                            .range((splice_end)..old_end)//(old_offset + exon_window_len))
                             .map(|var| var.1),
                     )
                     .count()
                 };
+
+                // Final variants have been added in this iteration
+                if is_last_exon_window {
+                    reached_end = true;
+                }
+
                 debug!("Offset + wlen: {}", offset + exon_window_len);
                 debug!("Old offset + wlen: {}", old_offset + exon_window_len);
                 debug!(
@@ -864,9 +879,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     max_read_len,
                     exon_window_len
                 );
+                debug!("Offset: {} ; (Offset - (max_read_len - window_len)) = {}", splice_side_offset, splice_side_offset - (max_read_len - exon_window_len));
                 let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
-                    debug!("Offset: {} ; (Offset - (max_read_len - window_len)) = {}", offset, offset - (max_read_len - exon_window_len));
                     if offset == exon.end - exon_window_len - current_exon_offset {
                         debug!("First exon window");
                         Itertools::flatten(
@@ -981,7 +996,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Current Exon Offset: {}", current_exon_offset);
                         debug!("Coding Shift % 3: {}", coding_shift % 3);
                         debug!("Shift: {}", (frameshift + current_exon_offset) % 3);
-                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 {
+                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 || is_short_exon {
                             // print haplotypes
                             debug!("Should print haplotypes");
                             if !has_frameshift {
@@ -1138,11 +1153,15 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             }
                         }
                     }
-                    old_offset = offset;
+                    old_offset = splice_side_offset;
+                    old_end = splice_end;
                     match transcript.strand {
                         PhasingStrand::Reverse => offset -= 1,
                         PhasingStrand::Forward => offset += 1,
                     }
+                }
+                if is_short_exon {
+                    break;
                 }
             }
         }

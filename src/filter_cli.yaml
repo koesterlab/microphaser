@@ -27,6 +27,11 @@ args:
       short: o
       default_value: "info.filtered.tsv"
       help: filtered info.tsv
+  - similaroutput:
+      long: similaroutput
+      short: s
+      default_value: "info.removed.tsv"
+      help: save peptides which have been removed due to self-similarity
   - normaloutput:
       long: normaloutput
       short: n

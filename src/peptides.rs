@@ -146,6 +146,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>,
+    removed_writer: &mut csv::Writer<fs::File>,
     peptide_length: usize
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
@@ -233,6 +234,9 @@ pub fn filter<F: io::Read, O: io::Write>(
             let vars = &row.variant_sites;
             if (transcript.to_string(), vars.to_string()) == current {
                 if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
+                    let row2 = row.clone();
+                    removed_writer.serialize(row2)?;
+                    debug!("{}", &String::from_utf8_lossy(n_peptide));
                     continue;
                 }
             }
@@ -249,7 +253,9 @@ pub fn filter<F: io::Read, O: io::Write>(
             row2.id = new_id;
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
-                true => (),
+                true => {
+                    removed_writer.serialize(row2)?;
+                },
                 false => {
                     fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
                     //if we don't have a matching normal, do not write an empty entry to the output
