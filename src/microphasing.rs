@@ -1105,6 +1105,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             debug!("Starting Offset of the Exon: {}", offset);
             let mut old_offset = offset;
             let mut old_end = old_offset + exon_window_len;
+            debug!("Old end: {}", old_end);
             debug!("Variants left from previous Exon: {}", last_window_vars);
             observations.shrink_left(last_window_vars);
             last_window_vars = 0;
@@ -1134,7 +1135,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             (offset - current_exon_offset, offset + exon_window_len + rest, current_exon_offset + rest, 2)
                         }
                         else if is_first_exon_window {
-                            (offset - current_exon_offset, offset + exon_window_len, current_exon_offset, 1)
+                            if is_last_exon_window {
+                                (offset - current_exon_offset, offset + exon_window_len + rest, current_exon_offset + rest, 2)
+                            }
+                            else {
+                                (offset - current_exon_offset, offset + exon_window_len, current_exon_offset, 1)
+                            }
                         }
                         else if is_last_exon_window {
                             (offset, offset + exon_window_len + rest, rest, 0)
@@ -1176,13 +1182,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 let added_vars = if offset == old_offset {
                     nvars
                 } else if is_short_exon {
+                    debug!("Short Exon");
                     0
                 // The final variants have been added in a previous iteration    
                 } else if reached_end {
+                    debug!("End of Exon reached");
                     0
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
                 } else if splice_side_offset > old_offset {
+                    debug!("variant range: {:?}", variant_tree.range(old_end..splice_end));
                     Itertools::flatten(
                         variant_tree
                             .range((old_end)..(splice_end))
@@ -1503,14 +1512,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                                     //Test: Merge short exon to previous window and save as hap_vec
                                     if is_short_exon {
+                                        debug!("Prevrecord: {:?}", prev_record);
+                                        debug!("Record: {:?}", record);
                                         debug!("Exon is shorter than window - merge");
                                         let new_hap_seq =  HaplotypeSeq {
                                             sequence: Vec::new(),
                                             record: prev_record.update(
                                                 record,
                                                 0,
-                                                new_mt_sequence.to_vec(),
-                                                new_wt_sequence.to_vec()
+                                                new_wt_sequence.to_vec(),
+                                                new_mt_sequence.to_vec()
                                             )
                                         };
                                         new_hap_vec.push(new_hap_seq);
@@ -1561,6 +1572,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             out_wt_seq.to_vec(),
                                             out_mt_seq.to_vec(),
                                         );
+                                        debug!("splice_offset: {}", splice_offset);
                                         debug!("prevRecord: {:?}", prev_record);
                                         debug!("afterRecord: {:?}", record);
                                         debug!("Record: {:?}", out_record);
@@ -1599,7 +1611,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                                 debug!("Out Sequence 2: {:?}", String::from_utf8_lossy(&out_mt_seq));
                                 // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-                                if out_record.nsomatic > 0 && !(out_mt_seq == out_wt_seq) {
+                                if !(out_mt_seq == out_wt_seq) {
                                     fasta_writer.write(
                                         &format!("{}", out_record.id),
                                         None,
