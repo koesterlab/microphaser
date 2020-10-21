@@ -299,7 +299,7 @@ pub struct IDRecord{
 }
 
 impl IDRecord {
-    pub fn update(&self, rec: &IDRecord, offset: u32, wt_seq: Vec<u8>, mt_seq: Vec<u8>) -> Self {
+    pub fn update(&self, rec: &IDRecord, offset: u32, frame: u32, wt_seq: Vec<u8>, mt_seq: Vec<u8>) -> Self {
         debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
@@ -391,7 +391,7 @@ impl IDRecord {
             gene_name: self.gene_name.to_owned(),
             chrom: self.chrom.to_owned(),
             offset: offset + self.offset,
-            frame: self.frame,
+            frame: frame,
             freq: self.freq * rec.freq,
             depth: self.depth,
             nvar: nvariants,
@@ -410,6 +410,7 @@ impl IDRecord {
     }
 
     pub fn add_freq(&self, freq: f64) -> Self {
+        debug!("Freq to add: {}", freq);
         let new_nvar = match self.nvar == 0 {
             true => self.nvar,
             false => match freq {

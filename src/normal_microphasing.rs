@@ -984,7 +984,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // add columns
                     observations.extend_right(variants)?;
 
-                    for (_, &frameshift) in frameshifts.range(..offset) {
+                    let mut active_frameshifts = match transcript.strand {
+                        PhasingStrand::Forward => frameshifts.range(..offset),
+                        PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
+                    };
+                    debug!("Active frameshifts: {:?}", active_frameshifts);
+                    for (_, &frameshift) in &mut active_frameshifts {
                         // possible shift if exon starts with the rest of a split codon (splicing)
                         debug!("Frameshift: {}", frameshift);
                         let coding_shift = match transcript.strand {

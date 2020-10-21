@@ -437,8 +437,9 @@ impl ObservationMatrix {
         tsv_writer: &mut csv::Writer<fs::File>,
         normal_writer: &mut fasta::Writer<fs::File>,
         is_short_exon: bool,
-        frame: u32
-    ) -> Result<Vec<HaplotypeSeq>, Box<dyn Error>> {
+        frame: u32,
+        mut frameshift_frequencies: BTreeMap<u32, (f64, bool)>,
+    ) -> Result<(Vec<HaplotypeSeq>,BTreeMap<u32, (f64, bool)>), Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
         variants_reverse.reverse();
@@ -468,7 +469,6 @@ impl ObservationMatrix {
 
         // frameshift
         let has_frameshift = frame > 0;
-
         let mut haplotypes_vec = Vec::new();
         // If there are no reads covering the window, fill with normal sequence and mark - important for gaps in coverage (see frameshifts)
         if haplotypes.is_empty() {
@@ -479,6 +479,7 @@ impl ObservationMatrix {
             // VecMap forces usize as type for keys, but our haplotypes as u64
             let haplotype = haplotype as u64;
             let mut indel = false;
+            let mut shift_in_window = false;
             debug!("Offset: {}", offset);
             debug!("Haplotype: {} ; count: {}", haplotype, count);
             debug!("Variants len: {}", variants.len());
@@ -515,6 +516,12 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
+                        debug!("j: {}, variantshift: {}", j, variants[j].frameshift());
+                        if variants[j].frameshift() > 0 {
+                            shift_in_window=true;
+                            frameshift_frequencies.insert(variants[j].frameshift(), (freq, !(variants[j].is_germline())));
+                            frameshift_frequencies.insert(0, (1.0 - freq, false));
+                        }
                         let bit_pos = match transcript.strand {
                             PhasingStrand::Reverse => j,
                             PhasingStrand::Forward => variants.len() - 1 -j,
@@ -575,14 +582,14 @@ impl ObservationMatrix {
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
                                     debug!("Variant: DEL");
-                                    match variants[j].is_germline() {
+                                    // if only the first position of a deletion is in the window, nothing has been deleted
+                                    match variants[j].is_germline() || i == window_end - 1 {
                                         true => {
                                             germline_seq.push(refseq[(i - gene.start()) as usize])
                                         }
                                         false => indel = true,
                                     }
                                     seq.push(refseq[(i - gene.start()) as usize]);
-                                    //indel = true;
                                     i += len + 1;
                                     // if strand == "Forward" {
                                     //     window_end += len;
@@ -618,8 +625,18 @@ impl ObservationMatrix {
                 }
                 debug!("all variants {}; som variants: {}", n_variants, n_somatic);
             }
+            // save frequency for frameshift as long the variant is in the window
+            let mut frame_frequency = freq;
+            debug!("frame: {}", frame);
+            debug!("frame_frequency: {}", frame_frequency);
+            if !(frameshift_frequencies.contains_key(&frame)) {
+                frameshift_frequencies.insert(frame, (frame_frequency, false));
+            }
+            if !(shift_in_window) {
+                frame_frequency = freq * frameshift_frequencies.get(&frame).unwrap().0;
+            }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
-            if indel || (has_frameshift && germline_seq != seq) {
+            if indel || frameshift_frequencies.get(&frame).unwrap().1 || (has_frameshift && germline_seq != seq) {
                 debug!("indel");
                 germline_seq.clear();
             }
@@ -739,7 +756,7 @@ impl ObservationMatrix {
                 chrom: gene.chrom.to_owned(),
                 offset: inframe_offset,
                 frame: frame,
-                freq: freq,
+                freq: frame_frequency,
                 depth: depth,
                 nvar: n_variants,
                 nsomatic: n_somatic,
@@ -864,7 +881,7 @@ impl ObservationMatrix {
                     chrom: gene.chrom.to_owned(),
                     offset: inframe_offset,
                     frame: frame,
-                    freq: freq,
+                    freq: frame_frequency,
                     nvar: n_variants,
                     depth: depth,
                     nsomatic: n_somatic,
@@ -986,7 +1003,7 @@ impl ObservationMatrix {
             }
         }
         debug!("{:?}", haplotypes_vec);
-        Ok(haplotypes_vec)
+        Ok((haplotypes_vec, frameshift_frequencies))
     }
 }
 
@@ -1054,12 +1071,18 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         debug!("Transcript strand orientation: {:?}", transcript.strand);
         let mut observations = ObservationMatrix::new();
         let mut frameshifts = BTreeMap::new();
-        frameshifts.insert(0, 0);
+        match transcript.strand {
+            PhasingStrand::Forward => frameshifts.insert(0, 0),
+            PhasingStrand::Reverse => frameshifts.insert(gene.end(), 0)
+        };
+        
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
         // Haplotypes from the end of the last exon
         let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
+        let mut frameshift_frequencies = BTreeMap::new();
+        frameshift_frequencies.insert(0, (1.0, false));
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         // Variable showing exon count
@@ -1330,7 +1353,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     for variant in &variants {
                         debug!("Variants!");
                         debug!("Variant Pos: {}", variant.pos());
+                        debug!("Variant EndPos: {}", variant.end_pos());
                         let s = variant.frameshift();
+                        debug!("Frameshift from Variant: {}", s);
                         if s > 0 {
                             let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
                             for s_ in previous {
@@ -1342,9 +1367,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // add columns
                     observations.extend_right(variants)?;
 
-                    for (_, &frameshift) in frameshifts.range(..offset) {
+                    let mut active_frameshifts = match transcript.strand {
+                        PhasingStrand::Forward => frameshifts.range(..offset),
+                        PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
+                    };
+                    debug!("Active frameshifts: {:?}", active_frameshifts);
+                    for (_, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
                         // possible shift if exon starts with the rest of a split codon (splicing)
                         debug!("Frameshift: {}", frameshift);
+                        debug!("Offset: {}", offset);
+                        debug!("Offset + window_len: {}", offset + exon_window_len);
                         let coding_shift = match transcript.strand {
                             PhasingStrand::Forward => offset - exon.start,
                             PhasingStrand::Reverse => exon.end - offset,
@@ -1375,52 +1407,39 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             //         }
                             //     }
                             // };
-                            if exon_rest < 3 && ((!is_short_exon) || is_first_exon) {
+                            let haplotype_results = observations
+                                .print_haplotypes(
+                                    gene,
+                                    transcript,
+                                    splice_side_offset,
+                                    splice_end,
+                                    splice_pos,
+                                    splice_gap,
+                                    exon.end,
+                                    exon.start,
+                                    exon_window_len,
+                                    refseq,
+                                    fasta_writer,
+                                    tsv_writer,
+                                    normal_writer,
+                                    is_short_exon,
+                                    frameshift,
+                                    frameshift_frequencies,
+                                )
+                                .unwrap();
+                            frameshift_frequencies = haplotype_results.1;
+                            if exon_rest < 3 && ((!is_short_exon) || is_first_exon) && !has_frameshift {
                                 debug!("Exon Rest {}", exon_rest);
-                                prev_hap_vec = observations
-                                    .print_haplotypes(
-                                        gene,
-                                        transcript,
-                                        splice_side_offset,
-                                        splice_end,
-                                        splice_pos,
-                                        splice_gap,
-                                        exon.end,
-                                        exon.start,
-                                        exon_window_len,
-                                        refseq,
-                                        fasta_writer,
-                                        tsv_writer,
-                                        normal_writer,
-                                        is_short_exon,
-                                        frameshift
-                                    )
-                                    .unwrap();
+                                prev_hap_vec = haplotype_results.0;
                             } else {
-                                hap_vec = observations
-                                    .print_haplotypes(
-                                        gene,
-                                        transcript,
-                                        splice_side_offset,
-                                        splice_end,
-                                        splice_pos,
-                                        splice_gap,
-                                        exon.end,
-                                        exon.start,
-                                        exon_window_len,
-                                        refseq,
-                                        fasta_writer,
-                                        tsv_writer,
-                                        normal_writer,
-                                        is_short_exon,
-                                        frameshift
-                                    )
-                                    .unwrap();
+                                hap_vec = haplotype_results.0;
                             }
                         }
                     }
                     debug!("hap_vec: {:?}", hap_vec);
                     debug!("prev_hap_vec: {:?}", prev_hap_vec);
+
+                    // check if we reached a stop codon
 
                     // check if the current offset is at a splice side
                     debug!("{}", offset - current_exon_offset);
@@ -1480,6 +1499,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 } else if prev_wt_sequence != prev_mt_sequence {
                                     new_mt_sequences
                                         .push(format!("{}{}", prev_mt_sequence, mt_sequence));
+                                } else {
+                                    new_mt_sequences
+                                        .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                 }
                                 debug!(
                                     "Complete WT Sequence : {:?}",
@@ -1493,6 +1515,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         sequence: Vec::new(),
                                         record: prev_record.update(
                                             record,
+                                            0,
                                             0,
                                             new_wt_sequence.to_vec(),
                                             new_wt_sequence.to_vec()
@@ -1520,6 +1543,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             record: prev_record.update(
                                                 record,
                                                 0,
+                                                0,
                                                 new_wt_sequence.to_vec(),
                                                 new_mt_sequence.to_vec()
                                             )
@@ -1528,74 +1552,92 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("New HapVec {:?}", new_hap_vec );
                                         continue;
                                     }
-
-                                    let mut splice_offset = 3;
-                                    if (transcript.strand == PhasingStrand::Reverse) && (exon_rest < 3) {
-                                        splice_offset += exon_rest;
-                                    }
-                                    debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
-                                    debug!("WT_Seq len {}", new_wt_sequence.len() as u32);
-                                    let mut end_offset = 3;
-                                    if is_last_exon_window {
-                                        end_offset = 0;
-                                    }
-                                    while splice_offset + window_len <= (new_mt_sequence.len() - end_offset) as u32
-                                    {
-                                        debug!("splice offset: {}", splice_offset);
-                                        debug!("splice offset + windowlen: {}", splice_offset + window_len);
-                                        // check if wildtype sequence is shorter because of indels in on of the sequences
-                                        let out_wt_seq = match splice_offset + window_len <= new_wt_sequence.len() as u32 {
-                                            true => &new_wt_sequence[splice_offset as usize
-                                                ..(splice_offset + window_len) as usize],
-                                            false => &[]
-                                        };
-                                        let out_mt_seq = &new_mt_sequence[splice_offset as usize
-                                            ..(splice_offset + window_len) as usize];
-
-                                        debug!(
-                                            "Out MT Sequence : {:?}",
-                                            String::from_utf8_lossy(&out_mt_seq)
-                                        );
-                                        debug!(
-                                            "Out WT Sequence : {:?}",
-                                            String::from_utf8_lossy(&out_wt_seq)
-                                        );
-                                        // non mutated sites
-                                        if out_wt_seq == out_mt_seq {
-                                            debug!("equal");
-                                            splice_offset += 3;
-                                            continue;
+                                    let mut active_frameshifts = match transcript.strand {
+                                        PhasingStrand::Forward => frameshifts.range(..offset),
+                                        PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
+                                    };
+                                    debug!("Active frameshifts: {:?}", active_frameshifts);
+                                    for (_, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
+                                        // possible shift if exon starts with the rest of a split codon (splicing)
+                                        debug!("Frameshift: {}", frameshift);
+                                        let somatic_shift = frameshift_frequencies.get(&frameshift).unwrap().1;
+                                        debug!("Somatic frameshift: {}", somatic_shift);
+                                        let mut splice_offset = 3 - frameshift;
+                                        if (transcript.strand == PhasingStrand::Reverse) && (exon_rest < 3) {
+                                            splice_offset += exon_rest;
                                         }
-                                        let out_record = prev_record.update(
-                                            record,
-                                            splice_offset,
-                                            out_wt_seq.to_vec(),
-                                            out_mt_seq.to_vec(),
-                                        );
-                                        debug!("splice_offset: {}", splice_offset);
-                                        debug!("prevRecord: {:?}", prev_record);
-                                        debug!("afterRecord: {:?}", record);
-                                        debug!("Record: {:?}", out_record);
-                                        // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
-                                        let id_tuple = (
-                                            splice_offset,
-                                            out_mt_seq.to_vec(),
-                                            out_wt_seq.to_vec(),
-                                        );
-                                        let old_freq = match output_map.get_mut(&id_tuple) {
-                                            Some(x) => x.1.freq,
-                                            None => 0.0,
-                                        };
-                                        *output_map.entry(id_tuple).or_insert((
-                                            out_mt_seq.to_vec(),
-                                            out_record,
-                                            out_wt_seq.to_vec(),
-                                        )) = (
-                                            out_mt_seq.to_vec(),
-                                            out_record.add_freq(old_freq),
-                                            out_wt_seq.to_vec(),
-                                        );
-                                        splice_offset += 3;
+                                        debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
+                                        debug!("WT_Seq len {}", new_wt_sequence.len() as u32);
+                                        let mut end_offset = 3 + frameshift as usize;
+                                        if is_last_exon_window {
+                                            end_offset = 0;
+                                        }
+                                        while splice_offset + window_len <= (new_mt_sequence.len() - end_offset) as u32
+                                        {
+                                            debug!("splice offset: {}", splice_offset);
+                                            debug!("splice offset + windowlen: {}", splice_offset + window_len);
+                                            // check if wildtype sequence is shorter because of indels in on of the sequences
+                                            let mut out_wt_seq = match splice_offset + window_len <= new_wt_sequence.len() as u32 {
+                                                true => &new_wt_sequence[splice_offset as usize
+                                                    ..(splice_offset + window_len) as usize],
+                                                false => &[]
+                                            };
+                                            let out_mt_seq = &new_mt_sequence[splice_offset as usize
+                                                ..(splice_offset + window_len) as usize];
+
+                                            debug!(
+                                                "Out MT Sequence : {:?}",
+                                                String::from_utf8_lossy(&out_mt_seq)
+                                            );
+                                            debug!(
+                                                "Out WT Sequence : {:?}",
+                                                String::from_utf8_lossy(&out_wt_seq)
+                                            );
+                                            //frameshifts
+                                            if frameshift > 0 && out_wt_seq == out_mt_seq && somatic_shift {
+                                                out_wt_seq = &[];
+                                            }
+                                            // non mutated sites
+                                            if out_wt_seq == out_mt_seq {
+                                                debug!("equal");
+                                                splice_offset += 3;
+                                                continue;
+                                            }
+                                            let out_record = prev_record.update(
+                                                record,
+                                                splice_offset,
+                                                frameshift,
+                                                out_wt_seq.to_vec(),
+                                                out_mt_seq.to_vec(),
+                                            );
+                                            debug!("splice_offset: {}", splice_offset);
+                                            debug!("prevRecord: {:?}", prev_record);
+                                            debug!("afterRecord: {:?}", record);
+                                            debug!("Record: {:?}", out_record);
+                                            // check if the sequence was already printed at that position, i.e. the variant defining the different haplotypes left the window
+                                            let id_tuple = (
+                                                splice_offset,
+                                                out_mt_seq.to_vec(),
+                                                out_wt_seq.to_vec(),
+                                            );
+                                            let mut old_freq = match output_map.get_mut(&id_tuple) {
+                                                Some(x) => x.1.freq,
+                                                None => 0.0,
+                                            };
+                                            if old_freq == 0.0 && frameshift > 0 {
+                                                old_freq = frameshift_frequencies.get(&frameshift).unwrap().0;
+                                            }
+                                            *output_map.entry(id_tuple).or_insert((
+                                                out_mt_seq.to_vec(),
+                                                out_record,
+                                                out_wt_seq.to_vec(),
+                                            )) = (
+                                                out_mt_seq.to_vec(),
+                                                out_record.add_freq(old_freq),
+                                                out_wt_seq.to_vec(),
+                                            );
+                                            splice_offset += 3;
+                                        }
                                     }
                                 }
                             }

@@ -2,7 +2,7 @@ use std::error::Error;
 use std::io;
 use std::fs;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 
 use bio::io::fasta;
 use bio::alphabets;
@@ -153,7 +153,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
     let mut current = (String::from(""), String::from(""));
     let mut seen_peptides = HashSet::new();
-    let mut stop_gained = vec![];
+    let mut stop_gained = BTreeMap::new();
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
@@ -187,15 +187,21 @@ pub fn filter<F: io::Read, O: io::Write>(
         let mut i = 0;
 
         // if Stop Codon in peptide, remove downstream peptides
-        let mut check = row.transcript.clone();
-        check.push_str(&row.frame.to_string());
-        if stop_gained.contains(&check) {
-            continue;
+        let check = (row.transcript.clone(), row.frame);
+        //check.push_str(&row.frame.to_string());
+        if stop_gained.contains_key(&check) {
+            let downstream_of_stop = match orientation {
+                "Forward" => offset > *stop_gained.get(&check).unwrap(),
+                "Reverse" => offset < *stop_gained.get(&check).unwrap(),
+                _ => false,
+            };
+            if downstream_of_stop {
+                continue;
+            }
         }
         if neopeptide.contains(&"X".as_bytes()[0]) && (row.freq == (1 as f64) || row.frame > 0) {
-            let mut tuple = row.transcript.clone();
-            tuple.push_str(&row.frame.to_string());
-            stop_gained.push(tuple);
+            let tuple = (row.transcript.clone(), row.frame);
+            stop_gained.insert(tuple, offset);
         }
 
         let current_neo = neopeptide.clone();
@@ -234,8 +240,8 @@ pub fn filter<F: io::Read, O: io::Write>(
             let vars = &row.variant_sites;
             if (transcript.to_string(), vars.to_string()) == current {
                 if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
-                    let row2 = row.clone();
-                    removed_writer.serialize(row2)?;
+                    //let row2 = row.clone();
+                    //removed_writer.serialize(row2)?;
                     debug!("{}", &String::from_utf8_lossy(n_peptide));
                     continue;
                 }
