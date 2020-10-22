@@ -261,6 +261,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             match ref_set.contains(n_peptide) {
                 true => {
                     removed_writer.serialize(row2)?;
+                    debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
                 },
                 false => {
                     fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;

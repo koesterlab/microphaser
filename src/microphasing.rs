@@ -1396,6 +1396,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     PhasingStrand::Forward => exon.end - (offset + exon_window_len),
                                     PhasingStrand::Reverse => offset - exon.start,
                                 };
+                                if exon_window_len < 3 {
+                                    exon_rest = exon_window_len;
+                                }
                             }
                             debug!("Exon Rest {}", exon_rest);
                             // let splice_gap = match offset == splice_side_offset {
@@ -1572,6 +1575,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         if is_last_exon_window {
                                             end_offset = 0;
                                         }
+                                        if (new_mt_sequence.len() as u32) < (2 * window_len) {
+                                            // short exon as first or last window:
+                                            if transcript.strand == PhasingStrand::Forward {
+                                                // take complete first exon
+                                                splice_offset = 0;
+                                            }
+                                            else {
+                                                //take complete first exon
+                                                end_offset = 0;
+                                            }
+                                        }
                                         while splice_offset + window_len <= (new_mt_sequence.len() - end_offset) as u32
                                         {
                                             debug!("splice offset: {}", splice_offset);
@@ -1709,6 +1723,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     debug!("refseq length {}", refseq.len());
 
     let mut gene = None;
+    let mut start_codon_found = false;
     let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<dyn Error>> {
         if let Some(ref gene) = gene {
             if gene.biotype == "protein_coding" {
@@ -1755,6 +1770,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             "transcript" => {
                 // register new transcript
                 debug!("Transcript found");
+                start_codon_found = false;
                 gene.as_mut()
                     .expect("no gene record before transcript in GTF")
                     .transcripts
@@ -1800,6 +1816,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .unwrap();
             } */
             "start_codon" => {
+                if start_codon_found {
+                    continue;
+                }
+                start_codon_found = true;
                 if record.strand() == Some(Strand::Forward) {
                     gene.as_mut()
                         .expect("no gene record before start_codon in GTF")
