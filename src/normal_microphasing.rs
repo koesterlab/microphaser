@@ -370,7 +370,7 @@ impl ObservationMatrix {
 
         //frameshift
         let has_frameshift = frame > 0;
-
+        debug!("Frame {}", frame);
         let mut haplotypes_vec = Vec::new();
         // If there are no reads covering the window, fill with normal sequence and mark - important for gaps in coverage (see frameshifts)
         if haplotypes.is_empty() {
@@ -467,6 +467,24 @@ impl ObservationMatrix {
                     seq.push(refseq[(i - gene.start()) as usize]);
                     i += 1
                 }
+            }
+            let this_window_len = match seq.len() < window_len as usize {
+                true => seq.len() as u32,
+                false => window_len
+            };
+            debug!("this window len {}", this_window_len);
+            let peptide = match splice_pos {
+                1 => String::from_utf8_lossy(&seq[splice_gap as usize..]),
+                0 => String::from_utf8_lossy(&seq[..this_window_len as usize]),
+                _ => String::from_utf8_lossy(&seq)
+            };
+            let stop_gain = match transcript.strand {
+                PhasingStrand::Forward => peptide.starts_with("TGA") || peptide.starts_with("TAG") || peptide.starts_with("TAA"),
+                PhasingStrand::Reverse => peptide.ends_with("TCA") || peptide.starts_with("CTA") || peptide.starts_with("TTA"),
+            };
+            if stop_gain {
+                debug!("Peptide with STOP codon: {}", peptide);
+                continue;
             }
 
             let mut shaid = sha1::Sha1::new();
@@ -701,7 +719,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         debug!("Transcript strand orientation: {:?}", transcript.strand);
         let mut observations = ObservationMatrix::new();
         let mut frameshifts = BTreeMap::new();
-        frameshifts.insert(0, 0);
+        match transcript.strand {
+            PhasingStrand::Forward => frameshifts.insert(0, 0),
+            PhasingStrand::Reverse => frameshifts.insert(gene.end(), 0)
+        };
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
         let mut exon_count = 0;
@@ -711,6 +732,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         for exon in &transcript.exons {
+            // if all frames are closed, finish the transcript          
+            if frameshifts.is_empty() {
+                break;
+            }
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
             exon_count += 1;
@@ -728,13 +753,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 _ => 3 - exon_rest,
             };
             debug!("Exon Offset: {}", current_exon_offset);
-            let is_short_exon = window_len >= (exon_len - 3);
+            let is_short_exon = window_len >= (exon_len - 3) || exon_len < 3;
             debug!("Short Exon: {}", is_short_exon);
             // if the exon is shorter than the window, we need to fix the window len for this exon
-            let exon_window_len = match is_short_exon {
+            let mut exon_window_len = match is_short_exon {
                 false => window_len,
                 true => (exon_len - current_exon_offset) - ((exon_len - current_exon_offset) % 3),
             };
+            if exon_window_len == 0 {
+                exon_window_len = exon_len
+            }
             // let mut exon_window_len = match is_short_exon {
             //     false => window_len,
             //     true => (exon_len - current_exon_offset) - ((exon_len - current_exon_offset) % 3),
@@ -744,7 +772,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             // }
             exon_rest = 0;
             let mut offset = if transcript.strand == PhasingStrand::Reverse {
-                exon.end - window_len - current_exon_offset
+                exon.end - exon_window_len - current_exon_offset
             } else {
                 exon.start + current_exon_offset
             };
@@ -758,6 +786,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             last_window_vars = 0;
             let mut is_first_exon_window = true;
             loop {
+                // if all frames are closed, finish the transcript          
+                if frameshifts.is_empty() {
+                    break;
+                }
                 let valid = match transcript.strand {
                     PhasingStrand::Reverse => offset >= exon.start,
                     PhasingStrand::Forward => offset + exon_window_len <= exon.end,
@@ -984,14 +1016,21 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // add columns
                     observations.extend_right(variants)?;
 
+                    let mut stopped_frameshift = 3;
                     let mut active_frameshifts = match transcript.strand {
                         PhasingStrand::Forward => frameshifts.range(..offset),
                         PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
                     };
                     debug!("Active frameshifts: {:?}", active_frameshifts);
-                    for (_, &frameshift) in &mut active_frameshifts {
+                    let mut frameshift_count = 0;
+                    let mut main_orf = false;
+                    for (&key, &frameshift) in &mut active_frameshifts {
                         // possible shift if exon starts with the rest of a split codon (splicing)
                         debug!("Frameshift: {}", frameshift);
+                        if frameshift == 0 {
+                            main_orf = true;
+                        }
+                        frameshift_count += 1;
                         let coding_shift = match transcript.strand {
                             PhasingStrand::Forward => offset - exon.start,
                             PhasingStrand::Reverse => exon.end - offset,
@@ -1011,48 +1050,51 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     PhasingStrand::Forward => exon.end - (offset + exon_window_len),
                                     PhasingStrand::Reverse => offset - exon.start,
                                 };
+                                if exon_window_len < 3 {
+                                    exon_rest = exon_window_len;
+                                }
                             }
                             debug!("Exon Rest {}", exon_rest);
-                            if exon_rest < 3 && ((!is_short_exon) || is_first_exon) {
-                                prev_hap_vec = observations
-                                    .print_haplotypes(
-                                        gene,
-                                        transcript,
-                                        splice_side_offset,
-                                        splice_end,
-                                        splice_pos,
-                                        splice_gap,
-                                        exon.end,
-                                        exon.start,
-                                        exon_window_len,
-                                        refseq,
-                                        fasta_writer,
-                                        is_short_exon,
-                                        frameshift
-                                    )
-                                    .unwrap();
-                            } else {
-                                hap_vec = observations
-                                    .print_haplotypes(
-                                        gene,
-                                        transcript,
-                                        splice_side_offset,
-                                        splice_end,
-                                        splice_pos,
-                                        splice_gap,
-                                        exon.end,
-                                        exon.start,
-                                        exon_window_len,
-                                        refseq,
-                                        fasta_writer,
-                                        is_short_exon,
-                                        frameshift
-                                    )
-                                    .unwrap();
+                            let haplotype_results = observations
+                                .print_haplotypes(
+                                    gene,
+                                    transcript,
+                                    splice_side_offset,
+                                    splice_end,
+                                    splice_pos,
+                                    splice_gap,
+                                    exon.end,
+                                    exon.start,
+                                    exon_window_len,
+                                    refseq,
+                                    fasta_writer,
+                                    is_short_exon,
+                                    frameshift,
+                                )
+                                .unwrap();
+                            if haplotype_results.is_empty() {
+                                debug!("EMPTY");
+                                stopped_frameshift = key;
+                                debug!("Offset {}", offset);
                             }
+                            if exon_rest < 3 && ((!is_short_exon) || is_first_exon) {
+                                prev_hap_vec = haplotype_results;
+                            } else {
+                                hap_vec = haplotype_results;
+                            }                     
                         }
                     }
-
+                    if frameshift_count == 0 || !main_orf {
+                        // no active frameshifts
+                        frameshifts.clear();
+                        break;
+                    }
+                    frameshifts.remove(&stopped_frameshift);
+                    debug!("frameshifts: {:?}", frameshifts);
+                    // if all frames are closed, finish the transcript          
+                    if frameshifts.is_empty() {
+                        break;
+                    }
                     // check if the current offset is at a splice side
                     let at_splice_side = match transcript.strand {
                         PhasingStrand::Forward => offset - current_exon_offset == exon.start,
@@ -1062,7 +1104,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     };
 
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
-                    if at_splice_side {
+                    if at_splice_side && (!is_first_exon){
                         let first_hap_vec = match transcript.strand {
                             PhasingStrand::Forward => &hap_vec,
                             PhasingStrand::Reverse => &prev_hap_vec,
@@ -1117,6 +1159,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 if is_last_exon_window {
                                     end_offset = 0;
                                 }
+                                if (prev_sequence.len() as u32) < (2 * window_len) {
+                                    // short exon as first or last window:
+                                    if transcript.strand == PhasingStrand::Forward {
+                                        // take complete first exon
+                                        splice_offset = 0;
+                                    }
+                                    else {
+                                        //take complete first exon
+                                        end_offset = 0;
+                                    }
+                                }
                                 while splice_offset + window_len <= (prev_sequence.len() - end_offset) as u32 {
                                     let out_seq = &prev_sequence[splice_offset as usize
                                         ..(splice_offset + window_len) as usize];
@@ -1164,11 +1217,25 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Reverse => offset -= 1,
                         PhasingStrand::Forward => offset += 1,
                     }
-                }
-                if is_short_exon {
+                // if all frames are closed, finish the transcript          
+                if frameshifts.is_empty() {
                     break;
                 }
             }
+            // if all frames are closed, finish the transcript          
+            if frameshifts.is_empty() {
+                break;
+            }
+            if is_short_exon {
+                debug!("Exon Rest (End Of Loop): {}", exon_rest);
+                break;
+            }
+            debug!("Exon Rest (End Of Loop): {}", exon_rest);
+            }
+        }
+        // if all frames are closed, finish the transcript          
+        if frameshifts.is_empty() {
+            break;
         }
     }
     Ok(())
@@ -1188,6 +1255,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     debug!("refseq length {}", refseq.len());
     debug!("Stared Phasing");
     let mut gene = None;
+    let mut start_codon_found = false;
     let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<dyn Error>> {
         if let Some(ref gene) = gene {
             if gene.biotype == "protein_coding" {
@@ -1231,6 +1299,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             "transcript" => {
                 // register new transcript
                 debug!("Transcript found");
+                start_codon_found = false;
                 gene.as_mut()
                     .expect("no gene record before transcript in GTF")
                     .transcripts
@@ -1260,6 +1329,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     ));
             }
             "start_codon" => {
+                if start_codon_found {
+                    continue;
+                }
+                start_codon_found = true;
                 if record.strand() == Some(Strand::Forward) {
                     gene.as_mut()
                         .expect("no gene record before start_codon in GTF")

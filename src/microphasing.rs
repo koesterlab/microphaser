@@ -480,6 +480,7 @@ impl ObservationMatrix {
             let haplotype = haplotype as u64;
             let mut indel = false;
             let mut shift_in_window = false;
+            let mut shift_is_set = false;
             debug!("Offset: {}", offset);
             debug!("Haplotype: {} ; count: {}", haplotype, count);
             debug!("Variants len: {}", variants.len());
@@ -519,8 +520,6 @@ impl ObservationMatrix {
                         debug!("j: {}, variantshift: {}", j, variants[j].frameshift());
                         if variants[j].frameshift() > 0 {
                             shift_in_window=true;
-                            frameshift_frequencies.insert(variants[j].frameshift(), (freq, !(variants[j].is_germline())));
-                            frameshift_frequencies.insert(0, (1.0 - freq, false));
                         }
                         let bit_pos = match transcript.strand {
                             PhasingStrand::Reverse => j,
@@ -529,6 +528,12 @@ impl ObservationMatrix {
                         debug!("frameshift: {}", variants[j].frameshift());
                         if bitvector_is_set(haplotype, bit_pos) {
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
+                            if shift_in_window {
+                                shift_is_set = true;
+                                frameshift_frequencies.insert(variants[j].frameshift(), (freq, !(variants[j].is_germline())));
+                                debug!("Frameshift frequencies {:?}", frameshift_frequencies);
+                                //frameshift_frequencies.insert(0, (1.0 - freq, false));
+                            }
                             // if (j + 1) < variants.len() && i == variants[j + 1].pos() {
                             //     j += 1;
                             // }
@@ -688,6 +693,15 @@ impl ObservationMatrix {
                 0 => String::from_utf8_lossy(&seq[..this_window_len as usize]),
                 _ => String::from_utf8_lossy(&seq)
             };
+            let stop_gain = match transcript.strand {
+                PhasingStrand::Forward => neopeptide.starts_with("TGA") || neopeptide.starts_with("TAG") || neopeptide.starts_with("TAA"),
+                PhasingStrand::Reverse => neopeptide.ends_with("TCA") || neopeptide.starts_with("CTA") || neopeptide.starts_with("TTA"),
+            };
+            if stop_gain {
+                debug!("Peptide with STOP codon: {}", neopeptide);
+                frameshift_frequencies.remove(&frame);
+                continue;
+            }
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
             let mut n_som_variantsites = 0;
@@ -1088,6 +1102,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         // Variable showing exon count
         let mut exon_count = 0;
         for exon in &transcript.exons {
+            if frameshifts.is_empty() {
+                break;
+            }
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
             if exon.start > exon.end {
@@ -1134,6 +1151,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             last_window_vars = 0;
             let mut is_first_exon_window = true;
             loop {
+                if frameshifts.is_empty() {
+                    break;
+                }
                 let valid = match transcript.strand {
                     PhasingStrand::Reverse => offset >= exon.start,
                     PhasingStrand::Forward => offset + exon_window_len <= exon.end,
@@ -1356,25 +1376,31 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Variant EndPos: {}", variant.end_pos());
                         let s = variant.frameshift();
                         debug!("Frameshift from Variant: {}", s);
-                        if s > 0 {
+                        if (s % 3) > 0 {
                             let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
                             for s_ in previous {
-                                frameshifts.insert(variant.end_pos(), s_);
+                                frameshifts.insert(variant.end_pos(), s_ % 3);
                             }
                         }
                     }
 
                     // add columns
                     observations.extend_right(variants)?;
-
+                    let mut stopped_frameshift = 3;
                     let mut active_frameshifts = match transcript.strand {
                         PhasingStrand::Forward => frameshifts.range(..offset),
                         PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
                     };
                     debug!("Active frameshifts: {:?}", active_frameshifts);
-                    for (_, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
+                    let mut frameshift_count = 0;
+                    let mut main_orf = false;
+                    for (&key, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
                         // possible shift if exon starts with the rest of a split codon (splicing)
                         debug!("Frameshift: {}", frameshift);
+                        frameshift_count += 1;
+                        if frameshift == 0 {
+                            main_orf = true;
+                        }
                         debug!("Offset: {}", offset);
                         debug!("Offset + window_len: {}", offset + exon_window_len);
                         let coding_shift = match transcript.strand {
@@ -1386,7 +1412,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Current Exon Offset: {}", current_exon_offset);
                         debug!("Coding Shift % 3: {}", coding_shift % 3);
                         debug!("Shift: {}", (frameshift + current_exon_offset) % 3);
-                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 {
+                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 || is_short_exon {
                             // print haplotypes
                             debug!("Should print haplotypes");
                             if !has_frameshift {
@@ -1397,6 +1423,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     PhasingStrand::Reverse => offset - exon.start,
                                 };
                                 if exon_window_len < 3 {
+                                    debug!("Window shorter than one codon, length: {}", exon_window_len);
                                     exon_rest = exon_window_len;
                                 }
                             }
@@ -1431,6 +1458,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 )
                                 .unwrap();
                             frameshift_frequencies = haplotype_results.1;
+                            if haplotype_results.0.is_empty() {
+                                stopped_frameshift = key;
+                            }
                             if exon_rest < 3 && ((!is_short_exon) || is_first_exon) && !has_frameshift {
                                 debug!("Exon Rest {}", exon_rest);
                                 prev_hap_vec = haplotype_results.0;
@@ -1439,6 +1469,19 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             }
                         }
                     }
+                    if frameshift_count == 0 || !main_orf {
+                        // no active frameshifts
+                        frameshifts.clear();
+                        break;
+                    }
+                    debug!("frameshifts: {:?}", frameshifts);
+                    debug!("Key to remove: {}", stopped_frameshift);
+                    // remove frameshift which reached stop codon
+                    frameshifts.remove(&stopped_frameshift);
+                    if frameshifts.is_empty() {
+                        break;
+                    }
+                    debug!("frameshifts: {:?}", frameshifts);
                     debug!("hap_vec: {:?}", hap_vec);
                     debug!("prev_hap_vec: {:?}", prev_hap_vec);
 
@@ -1563,6 +1606,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     for (_, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
                                         // possible shift if exon starts with the rest of a split codon (splicing)
                                         debug!("Frameshift: {}", frameshift);
+                                        if !frameshift_frequencies.contains_key(&frameshift){
+                                            frameshift_frequencies.insert(frameshift, (0.0, false));
+                                        }
                                         let somatic_shift = frameshift_frequencies.get(&frameshift).unwrap().1;
                                         debug!("Somatic frameshift: {}", somatic_shift);
                                         let mut splice_offset = 3 - frameshift;
@@ -1696,12 +1742,28 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Forward => offset += 1,
                     }
                     debug!("New offset: {}", offset);
+                    // if all frames are closed, finish the transcript          
+                    if frameshifts.is_empty() {
+                        break;
+                    }
+                if frameshifts.is_empty() {
+                    break;
                 }
+            }
+            // if all frames are closed, finish the transcript          
+            if frameshifts.is_empty() {
+                break;
+            }
             if is_short_exon {
+                debug!("Exon Rest (End Of Loop): {}", exon_rest);
                 break;
             }
             debug!("Exon Rest (End Of Loop): {}", exon_rest);
             }
+        }
+        // if all frames are closed, finish the transcript          
+        if frameshifts.is_empty() {
+            break;
         }
     }
     Ok(())
