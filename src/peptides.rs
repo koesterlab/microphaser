@@ -104,6 +104,7 @@ fn to_protein(s: &[u8], mut frame: i32) ->  Result<Vec<u8>, ()> {
 pub fn build<F: io::Read>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
+    fasta_writer: &mut fasta::Writer<fs::File>,
     peptide_length: usize,
 ) -> Result<(), Box<dyn Error>> {
     // build hashSet from reference peptide sequences
@@ -123,8 +124,9 @@ pub fn build<F: io::Read>(
         let mut i = 0;
         while i + base_length <= seq.len() {
             let pepseq = to_protein(&seq[i..(i + base_length)], frame).unwrap();
+            fasta_writer.write(&format!("{}", id), None, &pepseq)?;
             ref_set.insert(pepseq);
-            i += 3;
+            i += 3; 
         }
         // let mut i = 0;
         // while i + peptide_length < pepseq.len() {
@@ -147,6 +149,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     tsv_writer: &mut csv::Writer<fs::File>,
     removed_writer: &mut csv::Writer<fs::File>,
+    removed_fasta_writer: &mut fasta::Writer<fs::File>,
     peptide_length: usize
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
@@ -260,6 +263,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
                 true => {
+                    removed_fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
                     removed_writer.serialize(row2)?;
                     debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
                 },

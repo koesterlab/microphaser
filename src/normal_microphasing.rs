@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
+use std::fs;
 use std::io;
 
 use sha1;
@@ -93,6 +94,7 @@ pub struct IDRecord {
     somatic_aa_change: String,
     germline_positions: String,
     germline_aa_change: String,
+    peptide_sequence: String,
 }
 
 impl IDRecord {
@@ -135,6 +137,7 @@ impl IDRecord {
             somatic_aa_change: somatic_aa_change,
             germline_positions: germline_positions,
             germline_aa_change: germline_aa_change,
+            peptide_sequence: String::from_utf8(seq).unwrap(),
         }
     }
 
@@ -167,6 +170,7 @@ impl IDRecord {
             somatic_aa_change: self.somatic_aa_change.to_owned(),
             germline_positions: self.germline_positions.to_owned(),
             germline_aa_change: self.germline_aa_change.to_owned(),
+            peptide_sequence: self.peptide_sequence.to_owned(),
         }
     }
 }
@@ -339,6 +343,7 @@ impl ObservationMatrix {
         exon_start: u32,
         window_len: u32,
         refseq: &[u8],
+        tsv_writer: &mut csv::Writer<fs::File>,
         fasta_writer: &mut fasta::Writer<O>,
         is_short_exon: bool,
         frame: u32
@@ -571,6 +576,7 @@ impl ObservationMatrix {
                 somatic_aa_change: somatic_p_changes.to_owned(),
                 germline_positions: germline_var_pos.to_owned(),
                 germline_aa_change: germline_p_changes.to_owned(),
+                peptide_sequence: peptide.to_owned().to_string(),
             };
 
             // make haplotype record to carry over to next exon
@@ -649,6 +655,7 @@ impl ObservationMatrix {
                     somatic_aa_change: somatic_p_changes.to_owned(),
                     germline_positions: germline_var_pos.to_owned(),
                     germline_aa_change: germline_p_changes.to_owned(),
+                    peptide_sequence: String::from_utf8_lossy(&newseq).to_string(),
                 },
             };
 
@@ -660,6 +667,7 @@ impl ObservationMatrix {
                     0 => fasta_writer.write(&format!("{}", record.id), None, &seq[..window_len as usize])?,
                     _ => {}
                 };
+                tsv_writer.serialize(record)?;
             }
         }
         Ok(haplotypes_vec)
@@ -671,6 +679,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_reader: &mut fasta::IndexedReader<F>,
     read_buffer: &mut bam::RecordBuffer,
     variant_buffer: &mut bcf::buffer::RecordBuffer,
+    tsv_writer: &mut csv::Writer<fs::File>,
     fasta_writer: &mut fasta::Writer<O>,
     window_len: u32,
     refseq: &mut Vec<u8>,
@@ -1067,6 +1076,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     exon.start,
                                     exon_window_len,
                                     refseq,
+                                    tsv_writer,
                                     fasta_writer,
                                     is_short_exon,
                                     frameshift,
@@ -1208,6 +1218,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     None,
                                     &out_seq[..window_len as usize],
                                 )?;
+                                tsv_writer.serialize(out_record)?;
                             }
                         }
                     }
@@ -1246,6 +1257,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     gtf_reader: &mut gff::Reader<G>,
     bcf_reader: bcf::Reader,
     bam_reader: bam::IndexedReader,
+    tsv_writer: &mut csv::Writer<fs::File>,
     fasta_writer: &mut fasta::Writer<O>,
     window_len: u32,
 ) -> Result<(), Box<dyn Error>> {
@@ -1264,6 +1276,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     fasta_reader,
                     &mut read_buffer,
                     &mut variant_buffer,
+                    tsv_writer,
                     fasta_writer,
                     window_len,
                     &mut refseq,

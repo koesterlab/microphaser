@@ -32,6 +32,11 @@ args:
       short: s
       default_value: "info.removed.tsv"
       help: save peptides which have been removed due to self-similarity
+  - filteredpeptides:
+      long: filteredpeptides
+      short: p
+      default_value: "peptides.removed.fasta"
+      help: aminoacid sequences of filtered peptides
   - normaloutput:
       long: normaloutput
       short: n

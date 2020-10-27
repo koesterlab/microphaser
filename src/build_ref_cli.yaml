@@ -18,6 +18,12 @@ args:
       value_name: FILE
       required: true
       help: binary output file containing reference peptides as HashSet
+  - peptides:
+      long: peptides
+      short: p
+      value_name: FILE
+      required: true
+      help: fasta file containing reference peptides
   - peptide-length:
       long: peptide-length
       short: l

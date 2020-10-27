@@ -25,6 +25,12 @@ args:
       value_name: FILE
       required: true
       help: A bcf/vcf file containing variants.
+  - tsv:
+      long: tsv
+      short: t
+      value_name: FILE
+      required: true
+      help: A tsv to store the origin information info of normal peptides
   - window-len:
       long: window-len
       short: w

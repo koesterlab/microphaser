@@ -117,12 +117,17 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
+    let mut tsv_writer = csv::WriterBuilder::new()
+    .delimiter(b'\t')
+    .from_path(matches.value_of("tsv").unwrap())?;
+
     let window_len = value_t!(matches, "window-len", u32)?;
     normal_microphasing::phase(
         &mut fasta_reader,
         &mut gtf_reader,
         bcf_reader,
         bam_reader,
+        &mut tsv_writer,
         &mut fasta_writer,
         window_len,
     )
@@ -143,11 +148,13 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let peptide_length = value_t!(matches, "peptide-length", usize)?;
     let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
     let binary_writer = File::create(&matches.value_of("output").unwrap())?;
+    let mut fasta_writer = fasta::Writer::to_file(matches.value_of("peptides").unwrap())?;
 
     peptides::build(
         reference_reader,
         binary_writer,
-        peptide_length
+        &mut fasta_writer,
+        peptide_length,
     )
 }
 
@@ -177,6 +184,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut removed_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(matches.value_of("similaroutput").unwrap())?;
+    let mut removed_fasta_writer = fasta::Writer::to_file(matches.value_of("filteredpeptides").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
@@ -187,6 +195,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut normal_writer,
         &mut tsv_writer,
         &mut removed_writer,
+        &mut removed_fasta_writer,
         peptide_length,
     )
 }
