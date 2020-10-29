@@ -485,9 +485,10 @@ impl ObservationMatrix {
             };
             let stop_gain = match transcript.strand {
                 PhasingStrand::Forward => peptide.starts_with("TGA") || peptide.starts_with("TAG") || peptide.starts_with("TAA"),
-                PhasingStrand::Reverse => peptide.ends_with("TCA") || peptide.starts_with("CTA") || peptide.starts_with("TTA"),
+                PhasingStrand::Reverse => peptide.ends_with("TCA") || peptide.ends_with("CTA") || peptide.ends_with("TTA"),
             };
-            if stop_gain {
+            if stop_gain && splice_pos != 2 {
+                // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", peptide);
                 continue;
             }

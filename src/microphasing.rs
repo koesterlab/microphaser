@@ -258,6 +258,7 @@ pub struct HaplotypeSeq {
 pub struct Observation {
     read: bam::Record,
     haplotype: u64,
+    frame: u32,
 }
 
 impl Observation {
@@ -278,7 +279,10 @@ impl Observation {
                 variant.pos()
             );
             self.haplotype |= 1 << i;
-            debug!("Haplotype: {}", self.haplotype)
+            debug!("Haplotype: {}", self.haplotype);
+            self.frame += variant.frameshift();
+            debug!("Variant frameshift: {}", variant.frameshift())
+
         }
 
         Ok(())
@@ -394,6 +398,7 @@ impl ObservationMatrix {
             let mut obs = Observation {
                 read: read,
                 haplotype: 0,
+                frame: 0,
             };
             for (i, variant) in self.variants.iter().rev().enumerate() {
                 debug!("Checking variant support for new reads!");
@@ -448,11 +453,11 @@ impl ObservationMatrix {
             PhasingStrand::Forward => variants_forward,
         };
         // count haplotypes
-        let mut haplotypes: VecMap<usize> = VecMap::new();
+        let mut haplotypes: BTreeMap<(usize, u32), usize> = BTreeMap::new();
         for obs in Itertools::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
             debug!("obs haplotype:  {}", obs.haplotype);
-            *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
+            *haplotypes.entry((obs.haplotype as usize, obs.frame)).or_insert(0) += 1;
         }
         let splice_window_len = splice_end - offset;
         let mut seq = Vec::with_capacity(splice_window_len as usize);
@@ -472,12 +477,14 @@ impl ObservationMatrix {
         let mut haplotypes_vec = Vec::new();
         // If there are no reads covering the window, fill with normal sequence and mark - important for gaps in coverage (see frameshifts)
         if haplotypes.is_empty() {
-            haplotypes.insert(0, 0);
+            haplotypes.insert((0, 0), 0);
         }
 
-        for (haplotype, count) in haplotypes.iter() {
+        for (haplotype_tuple, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
-            let haplotype = haplotype as u64;
+            let haplotype = haplotype_tuple.0 as u64;
+            let haplotype_frame = haplotype_tuple.1;
+            debug!("Frame of Haplotype - inferred from reads: {}", haplotype_frame);
             let mut indel = false;
             let mut shift_in_window = false;
             let mut shift_is_set = false;
@@ -531,8 +538,8 @@ impl ObservationMatrix {
                             if shift_in_window {
                                 shift_is_set = true;
                                 frameshift_frequencies.insert(variants[j].frameshift(), (freq, !(variants[j].is_germline())));
+                                frameshift_frequencies.insert(0, (1.0 - freq, false));
                                 debug!("Frameshift frequencies {:?}", frameshift_frequencies);
-                                //frameshift_frequencies.insert(0, (1.0 - freq, false));
                             }
                             // if (j + 1) < variants.len() && i == variants[j + 1].pos() {
                             //     j += 1;
@@ -640,6 +647,12 @@ impl ObservationMatrix {
             if !(shift_in_window) {
                 frame_frequency = freq * frameshift_frequencies.get(&frame).unwrap().0;
             }
+            debug!("frame_frequency: {}", frame_frequency);
+            // check if the haplotype is already connected to a frameshift (i.e. with a frameshift on all reads supporting the haplotype)
+            // if the current frame does not match this frameshift, set the frequency to 0
+            if !(shift_in_window) && haplotype_frame > 0 && frame == 0 {
+                frame_frequency = 0.0;
+            }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
             if indel || frameshift_frequencies.get(&frame).unwrap().1 || (has_frameshift && germline_seq != seq) {
                 debug!("indel");
@@ -695,9 +708,12 @@ impl ObservationMatrix {
             };
             let stop_gain = match transcript.strand {
                 PhasingStrand::Forward => neopeptide.starts_with("TGA") || neopeptide.starts_with("TAG") || neopeptide.starts_with("TAA"),
-                PhasingStrand::Reverse => neopeptide.ends_with("TCA") || neopeptide.starts_with("CTA") || neopeptide.starts_with("TTA"),
+                PhasingStrand::Reverse => neopeptide.ends_with("TCA") || neopeptide.ends_with("CTA") || neopeptide.ends_with("TTA"),
             };
-            if stop_gain {
+            debug!("Neopeptide: {}", neopeptide);
+            debug!("Germline peptide: {}", normal_peptide);
+            if stop_gain && splice_pos != 2 {
+                // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
                 frameshift_frequencies.remove(&frame);
                 continue;
