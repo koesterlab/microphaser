@@ -493,6 +493,7 @@ impl ObservationMatrix {
             let haplotype_frame = haplotype_tuple.1;
             debug!("Frame of Haplotype - inferred from reads: {}", haplotype_frame);
             let mut indel = false;
+            let mut insertion = false;
             let mut shift_in_window = false;
             let mut shift_is_set = false;
             println!("Offset: {}", offset);
@@ -573,6 +574,7 @@ impl ObservationMatrix {
                                 // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
                                 &Variant::Insertion { seq: ref s, .. } => {
                                     debug!("Variant: INS");
+                                    debug!("Insertion length: {}", s.len());
                                     match variants[j].is_germline() {
                                         true => germline_seq.extend(
                                             switch_ascii_case_vec(
@@ -590,13 +592,13 @@ impl ObservationMatrix {
                                         )
                                         .into_iter(),
                                     );
-                                    //indel = true;
+                                    insertion = true;
                                     i += 1;
-                                    if strand == "Forward" {
-                                        window_end -= (s.len() as u32) - 1;
-                                    } else {
-                                        window_end -= s.len() as u32 - variants[j].frameshift() - 1;
-                                    }
+                                    // if strand == "Forward" {
+                                    //     window_end -= (s.len() as u32) - 1;
+                                    // } else {
+                                    //     window_end -= s.len() as u32 - 1 + variants[j].frameshift();
+                                    // }
                                 }
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
@@ -710,7 +712,10 @@ impl ObservationMatrix {
             // neopeptide sequence
             let neopeptide = match splice_pos {
                 1 => String::from_utf8_lossy(&seq[splice_gap as usize..]),
-                0 => String::from_utf8_lossy(&seq[..this_window_len as usize]),
+                0 => match insertion {
+                    true => String::from_utf8_lossy(&seq),
+                    false => String::from_utf8_lossy(&seq[..this_window_len as usize]),
+                },
                 _ => String::from_utf8_lossy(&seq)
             };
             let stop_gain = match transcript.strand {

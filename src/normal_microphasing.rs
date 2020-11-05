@@ -395,7 +395,7 @@ impl ObservationMatrix {
             debug!("Variants len: {}", variants.len());
             // build haplotype sequence
             seq.clear();
-
+            let mut insertion = false;
             let mut n_somatic = 0;
             let mut n_variants = 0;
             let freq = *count as f64 / self.nrows() as f64;
@@ -448,8 +448,13 @@ impl ObservationMatrix {
                                         )
                                         .into_iter(),
                                     );
+                                    insertion = true;
                                     i += 1;
-                                    window_end -= (s.len() as u32) - 1;
+                                    // if strand == "Forward" {
+                                    //     window_end -= (s.len() as u32) - 1;
+                                    // } else {
+                                    //     window_end -= s.len() as u32 - 1 + variants[j].frameshift();
+                                    // }
                                 }
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
@@ -486,7 +491,10 @@ impl ObservationMatrix {
             debug!("this window len {}", this_window_len);
             let peptide = match splice_pos {
                 1 => String::from_utf8_lossy(&seq[splice_gap as usize..]),
-                0 => String::from_utf8_lossy(&seq[..this_window_len as usize]),
+                0 => match insertion {
+                    true => String::from_utf8_lossy(&seq),
+                    false => String::from_utf8_lossy(&seq[..this_window_len as usize]),
+                },
                 _ => String::from_utf8_lossy(&seq)
             };
             let stop_gain = match transcript.strand {
