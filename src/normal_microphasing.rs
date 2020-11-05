@@ -50,21 +50,27 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
             };
             Ok(b == alt)
         }
-        &Variant::Insertion { .. } => {
+        &Variant::Insertion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
                 match c {
-                    &Cigar::Ins(_) => return Ok(true),
+                    &Cigar::Ins(_) => match c.len() == len {
+                        true => return Ok(true),
+                        false => (),
+                    },
                     _ => (),
                 }
             }
             Ok(false)
         }
-        &Variant::Deletion { .. } => {
+        &Variant::Deletion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
                 match c {
-                    &Cigar::Del(_) => return Ok(true),
+                    &Cigar::Del(_) => match c.len() == len {
+                        true => return Ok(true),
+                        false => (),
+                    },
                     _ => (),
                 }
             }

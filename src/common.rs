@@ -44,6 +44,7 @@ pub enum Variant {
     Insertion {
         pos: u32,
         seq: Vec<u8>,
+        len: u32,
         is_germline: bool,
         prot_change: String,
     },
@@ -79,6 +80,7 @@ impl Variant {
                 _alleles.push(Variant::Insertion {
                     pos: pos,
                     seq: a[0..].to_owned(),
+                    len: (a.len() - 1) as u32,
                     is_germline: is_germline,
                     prot_change: prot_change.to_owned(),
                 });
