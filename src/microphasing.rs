@@ -1549,7 +1549,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     };
 
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
-                    if (at_splice_side && (!is_first_exon)) || closed_deletion {
+                    if (at_splice_side && (!is_first_exon)) {
                         debug!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                             PhasingStrand::Forward => &hap_vec,
