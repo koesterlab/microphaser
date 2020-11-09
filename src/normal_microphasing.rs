@@ -1261,7 +1261,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         }
         // if all frames are closed, finish the transcript          
         if frameshifts.is_empty() {
-            break;
+            continue;
         }
     }
     Ok(())
