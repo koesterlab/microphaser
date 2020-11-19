@@ -142,6 +142,18 @@ pub fn build<F: io::Read>(
     Ok(())
 }
 
+pub fn compute_ml( 
+    frequencies: &Vec<f64>,
+) -> Result<f64, Box<dyn Error>> {
+    let mut x = 0.0;
+    for f in frequencies {
+        x += f;
+    }
+    let max_likelihood = x / frequencies.len() as f64;
+    debug!("ML: {}", max_likelihood);
+    Ok(max_likelihood)
+}
+
 pub fn filter<F: io::Read, O: io::Write>(
     reference_reader: fs::File,
     tsv_reader: &mut csv::Reader<F>,
@@ -155,6 +167,9 @@ pub fn filter<F: io::Read, O: io::Write>(
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
     let mut current = (String::from(""), String::from(""));
+    let mut current_variant = (String::from(""), String::from(""));
+    let mut frequencies = Vec::new();
+    let mut records: Vec<(IDRecord, String, String)>= Vec::new();
     let mut seen_peptides = HashSet::new();
     let mut stop_gained = BTreeMap::new();
     // get peptide info from info.tsv table (including sequences)
@@ -245,7 +260,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
                     //let row2 = row.clone();
                     //removed_writer.serialize(row2)?;
-                    debug!("{}", &String::from_utf8_lossy(n_peptide));
+                    debug!("Already Seen: {}", &String::from_utf8_lossy(n_peptide));
                     continue;
                 }
             }
@@ -253,6 +268,10 @@ pub fn filter<F: io::Read, O: io::Write>(
                 current = (transcript.to_string(), vars.to_string());
                 seen_peptides = HashSet::new();
             }
+            if current_variant == ("".to_string(), "".to_string()) {
+                current_variant = (transcript.to_string(), vars.to_string());
+            }
+            debug!("{}", &String::from_utf8_lossy(n_peptide));
             let current_peptide = String::from_utf8_lossy(n_peptide);
             seen_peptides.insert(current_peptide.to_string());
             let mut row2 = row.clone();
@@ -260,22 +279,87 @@ pub fn filter<F: io::Read, O: io::Write>(
             let counter_string = format!("{}_", &i.to_string());
             let new_id = counter_string + &row2.id;
             row2.id = new_id;
-            // check if the somatic peptide is present in the reference normal peptidome
-            match ref_set.contains(n_peptide) {
-                true => {
-                    removed_fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
-                    removed_writer.serialize(row2)?;
-                    debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
-                },
-                false => {
-                    fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
-                    //if we don't have a matching normal, do not write an empty entry to the output
-                    if w_peptide.len() > 0 {
-                        normal_writer.write(&format!("{}", row2.id), None, &w_peptide)?;
+            if current != current_variant { //som_pos != current_variant {
+                let ml = compute_ml(&frequencies).unwrap();
+                debug!("Printing records");
+                current_variant = (transcript.to_string(), vars.to_string());
+                for (row, np, wp) in &records {
+                    let n_peptide = np.as_bytes();
+                    let w_peptide = wp.as_bytes();
+                    let mut out_row = row.clone();
+                    out_row.freq = ml;
+                    debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
+                    // check if the somatic peptide is present in the reference normal peptidome
+                    match ref_set.contains(n_peptide) {
+                        true => {
+                            removed_fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                            removed_writer.serialize(out_row)?;
+                            debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
+                        },
+                        false => {
+                            fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                            //if we don't have a matching normal, do not write an empty entry to the output
+                            if w_peptide.len() > 0 {
+                                normal_writer.write(&format!("{}", out_row.id), None, &w_peptide)?;
+                            }
+                            tsv_writer.serialize(out_row)?;
+                        }
                     }
-                    tsv_writer.serialize(row2)?;
                 }
-             }
+                frequencies.clear();
+                frequencies.push(row2.freq);
+                records.clear();
+                records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
+            }
+            else {
+                debug!("Adding to record list {}", &String::from_utf8_lossy(n_peptide));
+                frequencies.push(row2.freq);
+                records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
+            }
+            // check if the somatic peptide is present in the reference normal peptidome
+            // for (row2, n_peptide, w_peptide) in &records {
+            //     row2.freq = ml;
+            //     match ref_set.contains(n_peptide) {
+            //         true => {
+            //             removed_fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
+            //             removed_writer.serialize(row2)?;
+            //             debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
+            //         },
+            //         false => {
+            //             fasta_writer.write(&format!("{}", row2.id), None, &n_peptide)?;
+            //             //if we don't have a matching normal, do not write an empty entry to the output
+            //             if w_peptide.len() > 0 {
+            //                 normal_writer.write(&format!("{}", row2.id), None, &w_peptide)?;
+            //             }
+            //             tsv_writer.serialize(row2)?;
+            //         }
+            //     }
+            // }
+        }
+    }
+    let ml = compute_ml(&frequencies).unwrap();
+    debug!("Printing records");
+    for (row, np, wp) in &records {
+        let n_peptide = np.as_bytes();
+        let w_peptide = wp.as_bytes();
+        let mut out_row = row.clone();
+        out_row.freq = ml;
+        debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
+        // check if the somatic peptide is present in the reference normal peptidome
+        match ref_set.contains(n_peptide) {
+            true => {
+                removed_fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                removed_writer.serialize(out_row)?;
+                debug!("Removed Peptide due to germline similar: {}", &String::from_utf8_lossy(n_peptide));
+            },
+            false => {
+                fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                //if we don't have a matching normal, do not write an empty entry to the output
+                if w_peptide.len() > 0 {
+                    normal_writer.write(&format!("{}", out_row.id), None, &w_peptide)?;
+                }
+                tsv_writer.serialize(out_row)?;
+            }
         }
     }
     Ok(())
