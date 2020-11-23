@@ -166,8 +166,8 @@ pub fn filter<F: io::Read, O: io::Write>(
 ) -> Result<(), Box<dyn Error>> {
     // load refernce HashSet from file
     let ref_set: HashSet<Vec<u8>> = deserialize_from(reference_reader).unwrap();
-    let mut current = (String::from(""), String::from(""));
-    let mut current_variant = (String::from(""), String::from(""));
+    let mut current = (String::from(""), String::from(""), String::from(""));
+    let mut current_variant = (String::from(""), String::from(""), String::from(""));
     let mut frequencies = Vec::new();
     let mut records: Vec<(IDRecord, String, String)>= Vec::new();
     let mut seen_peptides = HashSet::new();
@@ -255,8 +255,9 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
             // check if we already saw this peptide in this transcript
             let transcript = &row.transcript;
-            let vars = &row.variant_sites;
-            if (transcript.to_string(), vars.to_string()) == current {
+            let vars = &row.somatic_positions;
+            let germline_vars = &row.germline_positions;
+            if (transcript.to_string(), vars.to_string(), germline_vars.to_string()) == current {
                 if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
                     //let row2 = row.clone();
                     //removed_writer.serialize(row2)?;
@@ -265,11 +266,11 @@ pub fn filter<F: io::Read, O: io::Write>(
                 }
             }
             else {
-                current = (transcript.to_string(), vars.to_string());
+                current = (transcript.to_string(), vars.to_string(), germline_vars.to_string());
                 seen_peptides = HashSet::new();
             }
-            if current_variant == ("".to_string(), "".to_string()) {
-                current_variant = (transcript.to_string(), vars.to_string());
+            if current_variant == ("".to_string(), "".to_string(), "".to_string()) {
+                current_variant = (transcript.to_string(), vars.to_string(), germline_vars.to_string());
             }
             debug!("{}", &String::from_utf8_lossy(n_peptide));
             let current_peptide = String::from_utf8_lossy(n_peptide);
@@ -282,7 +283,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             if current != current_variant { //som_pos != current_variant {
                 let ml = compute_ml(&frequencies).unwrap();
                 debug!("Printing records");
-                current_variant = (transcript.to_string(), vars.to_string());
+                current_variant = (transcript.to_string(), vars.to_string(), germline_vars.to_string());
                 for (row, np, wp) in &records {
                     let n_peptide = np.as_bytes();
                     let w_peptide = wp.as_bytes();
