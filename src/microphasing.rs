@@ -490,6 +490,7 @@ impl ObservationMatrix {
         if haplotypes.is_empty() {
             haplotypes.insert((0, 0), 0);
         }
+        let mut shift_in_window = 0;
 
         for (haplotype_tuple, count) in haplotypes.iter() {
             // VecMap forces usize as type for keys, but our haplotypes as u64
@@ -498,7 +499,6 @@ impl ObservationMatrix {
             debug!("Frame of Haplotype - inferred from reads: {}", haplotype_frame);
             let mut indel = false;
             let mut insertion = false;
-            let mut shift_in_window = 0;
             let mut shift_is_set = false;
             debug!("Offset: {}", offset);
             debug!("Haplotype: {} ; count: {}", haplotype, count);
@@ -540,7 +540,10 @@ impl ObservationMatrix {
                         // if variants[j].frameshift() > 0 {
                         //     shift_in_window = true;
                         // }
-                        shift_in_window = variants[j].frameshift();
+                        shift_in_window = match shift_in_window > 0 {
+                            true => shift_in_window,
+                            false => variants[j].frameshift(),
+                        };
                         let bit_pos = match transcript.strand {
                             PhasingStrand::Reverse => j,
                             PhasingStrand::Forward => variants.len() - 1 -j,
@@ -752,6 +755,7 @@ impl ObservationMatrix {
             let mut germline_var_pos_vec = Vec::new();
             let mut variantsites_pos_vec = Vec::new();
             // gather information iterating over the variants
+            debug!("Variant list len: {}", variants.len());
             debug!("Variant profile len: {}", variant_profile.len());
             while c < variants.len() as u32 {
                 if c < variant_profile.len() as u32 {
@@ -769,20 +773,20 @@ impl ObservationMatrix {
                         // not present in this haplotype
                         _ => {}
                     }
-                    // check if variant position is already in the variant_site list
-                    if c == 0 {
-                        n_variantsites += 1;
-                        variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
-                        if !(variants[c as usize].is_germline()) {
-                            n_som_variantsites += 1;
-                        }
+                }
+                // check if variant position is already in the variant_site list
+                if c == 0 {
+                    n_variantsites += 1;
+                    variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
+                    if !(variants[c as usize].is_germline()) {
+                        n_som_variantsites += 1;
                     }
-                    else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
-                        n_variantsites += 1;
-                        variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
-                        if !(variants[c as usize].is_germline()) {
-                            n_som_variantsites += 1;
-                        }
+                }
+                else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    n_variantsites += 1;
+                    variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
+                    if !(variants[c as usize].is_germline()) {
+                        n_som_variantsites += 1;
                     }
                 }
                 c += 1
