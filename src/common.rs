@@ -451,6 +451,10 @@ impl IDRecord {
             true => self.nsomatic - 1,
             false => self.nsomatic,
         };
+        let new_freq = match self.freq > 0.5 {
+            true => self.freq,
+            false => self.freq + freq,
+        };
         IDRecord {
             id: self.id.to_owned(),
             transcript: self.transcript.to_owned(),
@@ -459,7 +463,7 @@ impl IDRecord {
             chrom: self.chrom.to_owned(),
             offset: self.offset,
             frame: self.frame,
-            freq: self.freq + freq,
+            freq: new_freq,
             depth: self.depth,
             nvar: new_nvar,
             nsomatic: new_somatic,

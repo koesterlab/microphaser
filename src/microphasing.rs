@@ -681,6 +681,7 @@ impl ObservationMatrix {
             if shift_is_set && frame == 0 {
                 frame = shift_in_window;
             }
+            debug!("frame: {}", frame);
             debug!("frame_frequency: {}", frame_frequency);
             debug!("Frameshift frequencies {:?}", frameshift_frequencies);
             if !(frameshift_frequencies.contains_key(&frame)) {
@@ -759,10 +760,11 @@ impl ObservationMatrix {
                 //neopeptide.ends_with("TCA") || neopeptide.ends_with("CTA") || neopeptide.ends_with("TTA")
                 //    || neopeptide.starts_with("TCA") || neopeptide.starts_with("CTA") || neopeptide.starts_with("TTA"),
             };
-            
+            debug!("stop_gain {}", stop_gain);
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
-            if stop_gain && splice_pos != 2 {
+            debug!("splice_pos {}", splice_pos);
+            if stop_gain && splice_pos != 2 && window_len == this_window_len {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
                 if frame == 0 {
@@ -1071,7 +1073,7 @@ impl ObservationMatrix {
             haplotypes_vec.push(hap_seq);
 
             // write neopeptides, information and matching normal peptide to files
-            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) {
+            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 {
                 debug!("Output at offset {}", offset);
                 match splice_pos {
                     1 => fasta_writer.write(&format!("{}", record.id), None, &seq[splice_gap as usize..])?,
@@ -1871,6 +1873,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                 };
                                                 continue;
                                             }
+                                            debug!("Out frequency: {}", out_freq);
+
                                             let out_offset = match transcript.strand {
                                                 PhasingStrand::Forward => splice_offset,
                                                 PhasingStrand::Reverse => end_offset as u32,
@@ -1905,6 +1909,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                 out_mt_seq.to_vec(),
                                                 out_wt_seq.to_vec(),
                                             );
+                                            debug!("ID-Tuple {:?}", id_tuple);
+                                            debug!("Output-Map {:?}", output_map);
                                             let mut old_freq = match output_map.get_mut(&id_tuple) {
                                                 Some(x) => x.1.freq,
                                                 None => 0.0,
@@ -1938,7 +1944,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 let out_record = &val.1;
                                 let out_mt_seq = &val.0;
                                 let out_wt_seq = &val.2;
-
+                                debug!("Out-Record: {:?}", out_record);
                                 debug!("Out Sequence 2: {:?}", String::from_utf8_lossy(&out_mt_seq));
                                 // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
                                 if !(out_mt_seq == out_wt_seq) {

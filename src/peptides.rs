@@ -169,8 +169,8 @@ pub fn filter<F: io::Read, O: io::Write>(
     let mut current = (String::from(""), String::from(""), String::from(""));
     let mut current_variant = (String::from(""), String::from(""), String::from(""));
     let mut region_sites = (String::from(""), String::from(""));
-    let mut frequencies: BTreeMap<(String, String), Vec<f64>> = BTreeMap::new();
-    let mut records: BTreeMap<(String, String), Vec<(IDRecord, String, String)>> = BTreeMap::new();
+    let mut frequencies: BTreeMap<(u32, String, String), Vec<f64>> = BTreeMap::new();
+    let mut records: BTreeMap<(u32, String, String), Vec<(IDRecord, String, String)>> = BTreeMap::new();
     let mut seen_peptides = HashSet::new();
     let mut stop_gained = BTreeMap::new();
     // get peptide info from info.tsv table (including sequences)
@@ -283,10 +283,11 @@ pub fn filter<F: io::Read, O: io::Write>(
             let counter_string = format!("{}_", &i.to_string());
             let new_id = counter_string + &row2.id;
             row2.id = new_id;
+            let frameshift = row2.frame;
             let current_freq = row2.freq;
             let current_depth = row2.depth;
             let value_tuple = (row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string());
-            let active_variants = (vars.to_string(), germline_vars.to_string());
+            //let active_variants = (vars.to_string(), germline_vars.to_string());
             if current_sites != region_sites {//current != current_variant { //som_pos != current_variant {
                 debug!("Printing records");
                 for (key, entries) in &records {
@@ -319,17 +320,17 @@ pub fn filter<F: io::Read, O: io::Write>(
                     }
                 }
                 frequencies.clear();
-                frequencies.insert((vars.to_string(), germline_vars.to_string()), vec!(current_freq));
+                frequencies.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(current_freq));
                 records.clear();
-                records.insert((vars.to_string(), germline_vars.to_string()), vec!(value_tuple));
+                records.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(value_tuple));
                 region_sites = current_sites;
                 //records.insert(row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
             }
             else {
                 debug!("Adding to record list {}", &String::from_utf8_lossy(n_peptide));
                 if current_depth > 0 {
-                    frequencies.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
-                    records.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
+                    frequencies.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
+                    records.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
                 }
                 //records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
             }
