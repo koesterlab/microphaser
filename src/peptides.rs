@@ -284,6 +284,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             let new_id = counter_string + &row2.id;
             row2.id = new_id;
             let current_freq = row2.freq;
+            let current_depth = row2.depth;
             let value_tuple = (row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string());
             let active_variants = (vars.to_string(), germline_vars.to_string());
             if current_sites != region_sites {//current != current_variant { //som_pos != current_variant {
@@ -294,7 +295,10 @@ pub fn filter<F: io::Read, O: io::Write>(
                         let n_peptide = np.as_bytes();
                         let w_peptide = wp.as_bytes();
                         let mut out_row = row.clone();
-                        out_row.freq = ml;
+                        out_row.freq = match out_row.depth == 0 {
+                            true => 0.0,
+                            false => ml,
+                        };
                         debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
                         // check if the somatic peptide is present in the reference normal peptidome
                         match ref_set.contains(n_peptide) {
@@ -323,8 +327,10 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
             else {
                 debug!("Adding to record list {}", &String::from_utf8_lossy(n_peptide));
-                frequencies.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
-                records.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
+                if current_depth > 0 {
+                    frequencies.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
+                    records.entry((vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
+                }
                 //records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
             }
             // check if the somatic peptide is present in the reference normal peptidome

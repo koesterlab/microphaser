@@ -41,6 +41,23 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
     }
 }
 
+pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
+    let codonlist = match orientation == "+" {
+        true => ["TGA", "TAG", "TAA"],
+        false => ["TCA", "CTA", "TTA"],
+    };
+    let mut c = 0;
+    while c < peptide.len() {
+        for codon in codonlist.iter() {
+            if peptide[c..].starts_with(codon) {
+                return true;
+            }
+        }
+        c += 3;
+    }
+    return false;
+}
+
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
@@ -508,7 +525,10 @@ impl ObservationMatrix {
             germline_seq.clear();
             let mut n_somatic = 0;
             let mut n_variants = 0;
-            let freq = *count as f64 / self.nrows() as f64;
+            let freq = match *count == 0 as usize {
+                true => 0.0,
+                false => *count as f64 / self.nrows() as f64,
+            };
             let depth = self.nrows() as u32;
             let mut i = offset;
             let mut j = 0;
@@ -732,15 +752,25 @@ impl ObservationMatrix {
                 _ => String::from_utf8_lossy(&seq)
             };
             let stop_gain = match transcript.strand {
-                PhasingStrand::Forward => neopeptide.starts_with("TGA") || neopeptide.starts_with("TAG") || neopeptide.starts_with("TAA"),
-                PhasingStrand::Reverse => neopeptide.ends_with("TCA") || neopeptide.ends_with("CTA") || neopeptide.ends_with("TTA"),
+                PhasingStrand::Forward => has_stop_codon(neopeptide.to_string(), "+"),
+                //neopeptide.ends_with("TGA") || neopeptide.ends_with("TAG") || neopeptide.ends_with("TAA")
+                //    || neopeptide.starts_with("TGA") || neopeptide.starts_with("TAG") || neopeptide.starts_with("TAA"),
+                PhasingStrand::Reverse => has_stop_codon(neopeptide.to_string(), "-")
+                //neopeptide.ends_with("TCA") || neopeptide.ends_with("CTA") || neopeptide.ends_with("TTA")
+                //    || neopeptide.starts_with("TCA") || neopeptide.starts_with("CTA") || neopeptide.starts_with("TTA"),
             };
+            
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
             if stop_gain && splice_pos != 2 {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
-                frameshift_frequencies.remove(&frame);
+                if frame == 0 {
+                    frameshift_frequencies.insert(frame, (0.0, false));
+                }
+                else {
+                    frameshift_frequencies.remove(&frame);
+                }
                 continue;
             }
             // gathering meta information on haplotype
@@ -1572,7 +1602,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("frameshifts: {:?}", frameshifts);
                     debug!("Key to remove: {}", stopped_frameshift);
                     // remove frameshift which reached stop codon
-                    frameshifts.remove(&stopped_frameshift);
+                    if stopped_frameshift != 3 {
+                        if *(frameshifts.get(&stopped_frameshift).unwrap()) != 0 {
+                            frameshifts.remove(&stopped_frameshift);
+                        }
+                    }
                     if frameshifts.is_empty() {
                         break;
                     }
@@ -1669,7 +1703,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             record.frame,
                                             record.freq,
                                             new_wt_sequence.to_vec(),
-                                            new_wt_sequence.to_vec()
+                                            new_wt_sequence.to_vec(),
+                                            window_len
                                         )
                                     };
                                     new_hap_vec.push(new_hap_seq);
@@ -1697,7 +1732,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                 record.frame,
                                                 record.freq,
                                                 new_wt_sequence.to_vec(),
-                                                new_mt_sequence.to_vec()
+                                                new_mt_sequence.to_vec(),
+                                                window_len
                                             )
                                         };
                                         new_hap_vec.push(new_hap_seq);
@@ -1708,7 +1744,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         PhasingStrand::Forward => frameshifts.range(..offset),
                                         PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
                                     };
-                                    let main_ORF_freq = frameshift_frequencies.get(&0).unwrap().0;
+                                    
                                     debug!("Active frameshifts: {:?}", active_frameshifts);
                                     for (&pos, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
                                         // possible shift if exon starts with the rest of a split codon (splicing)
@@ -1726,20 +1762,35 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         let somatic_shift = frameshift_frequencies.get(&frameshift).unwrap().1;
                                         let frameshift_freq = frameshift_frequencies.get(&frameshift).unwrap().0;
                                         // compute the SNV frequency per frameshift from the actual record frequency and the frameshift frequency
-                                        let shift_ORF_freq = match shift_in_window {
+                                        let main_orf_freq = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
                                             true => frameshift_freq,
                                             false => frameshift_frequencies.get(&0).unwrap().0,
                                         };
+                                        let shift_orf_freq = match shift_in_window {
+                                            true => frameshift_freq,
+                                            false => match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                                true => frameshift_freq,
+                                                false => frameshift_frequencies.get(&0).unwrap().0,
+                                            },
+                                        };
+                                        debug!("shift_ORF_freq {}", shift_orf_freq);
                                         let variant_freq_record = match transcript.strand {
-                                            PhasingStrand::Forward => &record.freq / main_ORF_freq,
-                                            PhasingStrand::Reverse => &record.freq / shift_ORF_freq,
+                                            PhasingStrand::Forward => &record.freq / main_orf_freq,
+                                            PhasingStrand::Reverse => &record.freq / shift_orf_freq,
                                         };
                                         let variant_freq_prev_record = match transcript.strand {
-                                            PhasingStrand::Forward => &prev_record.freq / shift_ORF_freq,
-                                            PhasingStrand::Reverse => &prev_record.freq / main_ORF_freq,
+                                            PhasingStrand::Forward => &prev_record.freq / shift_orf_freq,
+                                            PhasingStrand::Reverse => &prev_record.freq / main_orf_freq,
                                         };
-                                        let freq_record = variant_freq_record * frameshift_freq;
-                                        let freq_prev_record = variant_freq_prev_record * frameshift_freq;
+
+                                        let freq_record = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                            false => variant_freq_record * frameshift_freq,
+                                            true => frameshift_freq,
+                                        };
+                                        let freq_prev_record = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                            false => variant_freq_prev_record * frameshift_freq,
+                                            true => frameshift_freq,
+                                        };
 
                                         let out_freq = match freq_record == freq_prev_record {
                                             true => freq_record,
@@ -1832,6 +1883,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                     out_freq,
                                                     out_wt_seq.to_vec(),
                                                     out_mt_seq.to_vec(),
+                                                    window_len
                                                 ),
                                                 PhasingStrand::Reverse => record.update(
                                                     prev_record,
@@ -1840,6 +1892,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                     out_freq,
                                                     out_wt_seq.to_vec(),
                                                     out_mt_seq.to_vec(),
+                                                    window_len
                                                 ),
                                             };
                                             debug!("splice_offset: {}", splice_offset);
@@ -1961,6 +2014,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
 
     let mut gene = None;
     let mut start_codon_found = false;
+    let mut three_prime_found = false;
     let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<dyn Error>> {
         if let Some(ref gene) = gene {
             if gene.biotype == "protein_coding" {
@@ -2008,6 +2062,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                 // register new transcript
                 debug!("Transcript found");
                 start_codon_found = false;
+                three_prime_found = false;
                 gene.as_mut()
                     .expect("no gene record before transcript in GTF")
                     .transcripts
@@ -2016,6 +2071,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                             .attributes()
                             .get("transcript_id")
                             .expect("missing transcript_id attribute in GTF"),
+                        record
+                            .attributes()
+                            .get("transcript_biotype")
+                            .expect("missing transcript_biotype in GTF"),
                         PhasingStrand::from(
                             record.strand().expect("missing strand information in GTF"),
                         ),
@@ -2077,6 +2136,47 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .last_mut()
                         .expect("no exon record before start codon in GTF")
                         .end = *record.end() as u32;
+                }
+            }
+            "three_prime_utr" => {
+                debug!("3prime found");
+                if three_prime_found {
+                // register exon
+                    gene.as_mut()
+                        .expect("no gene record before exon in GTF")
+                        .transcripts
+                        .last_mut()
+                        .expect("no transcript record before exon in GTF")
+                        .exons
+                        .push(Interval::new(
+                            *record.start() as u32 - 1,
+                            *record.end() as u32,
+                            record.frame()
+                        ));
+                }
+                else {
+                    three_prime_found = true;
+                    if record.strand() == Some(Strand::Forward) {
+                        gene.as_mut()
+                            .expect("no gene record before start_codon in GTF")
+                            .transcripts
+                            .last_mut()
+                            .expect("no transcript record before start codon in GTF")
+                            .exons
+                            .last_mut()
+                            .expect("no exon record before start codon in GTF")
+                            .end = *record.end() as u32;
+                    } else {
+                        gene.as_mut()
+                            .expect("no gene record before start_codon in GTF")
+                            .transcripts
+                            .last_mut()
+                            .expect("no transcript record before start codon in GTF")
+                            .exons
+                            .last_mut()
+                            .expect("no exon record before start codon in GTF")
+                            .start = *record.start() as u32 - 1;
+                    }
                 }
             }
 /*             "stop_codon" => {

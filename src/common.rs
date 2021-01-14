@@ -201,15 +201,17 @@ impl From<Strand> for PhasingStrand {
 #[derive(Debug)]
 pub struct Transcript {
     pub id: String,
+    pub biotype: String,
     pub strand: PhasingStrand,
     pub exons: Vec<Interval>,
 }
 
 impl Transcript {
-    pub fn new(id: &str, strand: PhasingStrand) -> Self {
+    pub fn new(id: &str, biotype: &str, strand: PhasingStrand) -> Self {
         Transcript {
             id: id.to_owned(),
             strand: strand,
+            biotype: biotype.to_owned(),
             exons: Vec::new(),
         }
     }
@@ -301,7 +303,7 @@ pub struct IDRecord{
 }
 
 impl IDRecord {
-    pub fn update(&self, rec: &IDRecord, offset: u32, frame: u32, freq: f64, wt_seq: Vec<u8>, mt_seq: Vec<u8>) -> Self {
+    pub fn update(&self, rec: &IDRecord, offset: u32, frame: u32, freq: f64, wt_seq: Vec<u8>, mt_seq: Vec<u8>, wlen: u32) -> Self {
         debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
@@ -312,6 +314,8 @@ impl IDRecord {
             &shaid.digest().to_string()[..15],
             self.strand.chars().next().unwrap()
         );
+        debug!("Splice offset: {}", offset);
+        debug!("first_offset {} second_offset {}", self.offset, rec.offset);
 
         let somatic_positions = self.somatic_positions.split("|");
         let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split("|").collect();
@@ -329,13 +333,17 @@ impl IDRecord {
         let mut nsomatic = 0;
 
         let mut c = 0;
-
+        let window_len = wlen;
         for p in somatic_positions {
             debug!("{}", p);
             if p == "" {
                 break;
             }
-            if self.offset + offset <= p.parse::<u32>().unwrap() {
+            let active_variant = match self.strand == "Forward" {
+                true => self.offset + offset <= p.parse::<u32>().unwrap(),
+                false => self.offset + window_len - offset >= p.parse::<u32>().unwrap(),
+            };
+            if active_variant {
                 s_p_vec.push(p.to_string());
                 s_aa_vec.push(somatic_aa_change[c]);
                 nsomatic += 1;
@@ -349,7 +357,11 @@ impl IDRecord {
             if p == "" {
                 break;
             }
-            if rec.offset >= p.parse::<u32>().unwrap() - offset {
+            let active_variant = match self.strand == "Forward" {
+                true => rec.offset + offset >= p.parse::<u32>().unwrap(),
+                false => rec.offset + window_len - 3 - offset <= p.parse::<u32>().unwrap(),
+            };
+            if active_variant {
                 debug!("hey");
                 s_p_vec.push(p.to_string());
                 s_aa_vec.push(other_somatic_aa_change[c]);
@@ -392,7 +404,12 @@ impl IDRecord {
 
         let new_offset = match self.strand == "Forward" {
             true => self.offset + offset,
-            false => self.offset - offset,
+            false => rec.offset + window_len + 3 - offset,
+        };
+
+        let new_depth = match (rec.depth == 0 || self.depth == 0) {
+            true => 0,
+            false => ((rec.depth + self.depth) / 2) as u32,
         };
 
         debug!("nvars {} {}", self.nvar, rec.nvar);
@@ -405,7 +422,7 @@ impl IDRecord {
             offset: new_offset,
             frame: frame,
             freq: freq,
-            depth: self.depth,
+            depth: new_depth,
             nvar: nvariants,
             nsomatic: nsomatic,
             nvariant_sites: self.nvariant_sites + rec.nvariant_sites,

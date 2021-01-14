@@ -1337,6 +1337,10 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                             .attributes()
                             .get("transcript_id")
                             .expect("missing transcript_id attribute in GTF"),
+                        record
+                            .attributes()
+                            .get("transcript_biotype")
+                            .expect("missing transcript_biotype in GTF"),
                         PhasingStrand::from(
                             record.strand().expect("missing strand information in GTF"),
                         ),
