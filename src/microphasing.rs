@@ -1202,7 +1202,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             debug!("Exon Offset: {}", current_exon_offset);
             let is_last_exon = exon_count as usize == exon_number;
             let is_first_exon = exon_count == 1;
-            let is_short_exon = window_len >= exon_len - current_exon_offset;
+            let is_short_exon = window_len >= exon_len - current_exon_offset - (3 - current_exon_offset)%3;
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let mut exon_window_len = match is_short_exon {
                 false => window_len,
@@ -1617,8 +1617,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         break;
                     }
                     debug!("frameshifts: {:?}", frameshifts);
-                    debug!("hap_vec: {:?}", hap_vec);
-                    debug!("prev_hap_vec: {:?}", prev_hap_vec);
+                    println!("hap_vec: {:?}", hap_vec);
+                    println!("prev_hap_vec: {:?}", prev_hap_vec);
 
                     // check if we reached a stop codon
 
@@ -1633,7 +1633,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     is_first_exon_window = false;
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
                     if (at_splice_side && (!is_first_exon)) {
-                        debug!("SpliceSide");
+                        println!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                             PhasingStrand::Forward => &hap_vec,
                             PhasingStrand::Reverse => &prev_hap_vec,
@@ -1642,8 +1642,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             PhasingStrand::Forward => &prev_hap_vec,
                             PhasingStrand::Reverse => &hap_vec,
                         };
-                        debug!("first_hap_vec: {:?}", first_hap_vec);
-                        debug!("sec_hap_vec: {:?}", sec_hap_vec);
+                        println!("first_hap_vec: {:?}", first_hap_vec);
+                        println!("sec_hap_vec: {:?}", sec_hap_vec);
 
                         let mut output_map: BTreeMap<
                             (u32, Vec<u8>, Vec<u8>),
@@ -1657,12 +1657,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         for hapseq in first_hap_vec {
                             //let sequence = &hapseq.sequence;
                             let record = &hapseq.record;
-                            debug!("First Record: {:?}", record);
+                            println!("First Record: {:?}", record);
                             let wt_sequence = &record.normal_sequence;
                             let mt_sequence = &record.mutant_sequence;
                             for prev_hapseq in sec_hap_vec {
                                 let prev_record = &prev_hapseq.record;
-                                debug!("Second Record: {:?}", prev_record);
+                                println!("Second Record: {:?}", prev_record);
                                 // if &record.frame != &prev_record.frame {
                                 //     continue;
                                 // }
@@ -1689,14 +1689,14 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     new_mt_sequences
                                         .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                 }
-                                debug!(
+                                println!(
                                     "Complete WT Sequence : {:?}",
                                     String::from_utf8_lossy(&new_wt_sequence)
                                 );
 
                                 //Test: Keep even wildtype records for merging if we are in a short exon
                                 if is_short_exon && !is_last_exon {
-                                    debug!("Exon is shorter than window - merge");
+                                    println!("Exon is shorter than window - merge");
                                     let new_hap_seq =  HaplotypeSeq {
                                         sequence: Vec::new(),
                                         record: prev_record.update(
@@ -1716,7 +1716,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 // slide window over the spanning sequence
                                 for new_mt in new_mt_sequences {
                                     let new_mt_sequence = new_mt.as_bytes();
-                                    debug!(
+                                    println!(
                                         "Complete MT Sequence : {:?}",
                                         String::from_utf8_lossy(&new_mt_sequence)
                                     );
@@ -1852,11 +1852,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             //&new_mt_sequence[splice_offset as usize
                                             //   ..(splice_offset + window_len) as usize];
 
-                                            debug!(
+                                            println!(
                                                 "Out MT Sequence : {:?}",
                                                 String::from_utf8_lossy(&out_mt_seq)
                                             );
-                                            debug!(
+                                            println!(
                                                 "Out WT Sequence : {:?}",
                                                 String::from_utf8_lossy(&out_wt_seq)
                                             );

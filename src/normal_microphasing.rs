@@ -777,7 +777,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 _ => 3 - exon_rest,
             };
             debug!("Exon Offset: {}", current_exon_offset);
-            let is_short_exon = window_len >= (exon_len - 3) || exon_len < 3;
+            let is_short_exon = window_len >= exon_len - current_exon_offset - (3 - current_exon_offset)%3; || exon_len < 3;
             debug!("Short Exon: {}", is_short_exon);
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let mut exon_window_len = match is_short_exon {
