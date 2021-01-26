@@ -63,7 +63,6 @@ impl Variant {
         let ann = Annotation::new(rec);
 
         let prot_change = ann.prot_change.as_str();
-
         let pos = rec.pos();
         let alleles = rec.alleles();
         let refallele = alleles[0];
@@ -407,7 +406,7 @@ impl IDRecord {
             false => rec.offset + window_len + 3 - offset,
         };
 
-        let new_depth = match (rec.depth == 0 || self.depth == 0) {
+        let new_depth = match rec.depth == 0 || self.depth == 0 {
             true => 0,
             false => ((rec.depth + self.depth) / 2) as u32,
         };

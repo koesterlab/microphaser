@@ -308,11 +308,12 @@ pub struct Observation {
     read: bam::Record,
     haplotype: u64,
     frame: u32,
-    bad_qual: bool
+    bad_qual: bool,
+    start_loss: bool
 }
 
 impl Observation {
-    pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<dyn Error>> {
+    pub fn update_haplotype(&mut self, i: usize, variant: &Variant, has_start_loss: bool) -> Result<(), Box<dyn Error>> {
         debug!(
             "Read name {} ; Read pos {} ; variant pos {}",
             String::from_utf8_lossy(self.read.qname()),
@@ -328,13 +329,17 @@ impl Observation {
                 String::from_utf8_lossy(self.read.qname()),
                 variant.pos()
             );
+            if has_start_loss {
+                self.start_loss = true;
+            }
+            debug!("Start loss variant {}", has_start_loss);
             self.haplotype |= 1 << i;
             debug!("Haplotype: {}", self.haplotype);
             self.frame += variant.frameshift();
             debug!("Variant frameshift: {}", variant.frameshift())
 
         }
-        if bad_quality(&self.read, &variant)? || self.bad_qual {
+        if bad_quality(&self.read, &variant)? || self.bad_qual || self.start_loss {
             self.haplotype = 0;
             self.bad_qual = true;
         }
@@ -368,7 +373,7 @@ impl ObservationMatrix {
     }
 
     /// Add new variants
-    pub fn extend_right(&mut self, new_variants: Vec<Variant>) -> Result<(), Box<dyn Error>> {
+    pub fn extend_right(&mut self, new_variants: Vec<Variant>, start_loss: &Vec<u32>) -> Result<(), Box<dyn Error>> {
         let k = new_variants.len();
         debug!("Extend variants!");
         debug!("New variants {}", k);
@@ -382,7 +387,7 @@ impl ObservationMatrix {
         for obs in Itertools::flatten(self.observations.values_mut()) {
             for (i, variant) in new_variants.iter().rev().enumerate() {
                 debug!("Checking new variant support in existing Reads");
-                obs.update_haplotype(i, variant)?;
+                obs.update_haplotype(i, variant, start_loss.contains(&variant.pos()))?;
             }
         }
         self.variants.extend(new_variants.into_iter());
@@ -435,6 +440,7 @@ impl ObservationMatrix {
         interval_end: u32,
         interval_start: u32,
         reverse: bool,
+        start_loss: &Vec<u32>,
     ) -> Result<(), Box<dyn Error>> {
         let end_pos = read.cigar().end_pos() as u32;
         let start_pos = read.pos() as u32;
@@ -452,11 +458,12 @@ impl ObservationMatrix {
                 read: read,
                 haplotype: 0,
                 frame: 0,
-                bad_qual: false
+                bad_qual: false,
+                start_loss: false
             };
             for (i, variant) in self.variants.iter().rev().enumerate() {
                 debug!("Checking variant support for new reads!");
-                obs.update_haplotype(i, variant)?;
+                obs.update_haplotype(i, variant, start_loss.contains(&variant.pos()))?;
             }
             let pos = match reverse {
                 true => start_pos,
@@ -1206,6 +1213,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut frameshift_frequencies = BTreeMap::new();
         frameshift_frequencies.insert(0, (1.0, false));
+        // List of start_loss variants
+        let mut start_loss = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
         // Variable showing exon count
@@ -1446,7 +1455,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Forward => false,
                     };
                     if reverse {
-                        observations.cleanup_reads(splice_side_offset, reverse);
+                        observations.cleanup_reads(splice_side_offset + 1, reverse);
                     } else {
                         observations.cleanup_reads(splice_end, reverse);
                     }
@@ -1461,6 +1470,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             splice_end,
                             splice_side_offset,
                             reverse,
+                            &start_loss,
                         )?;
                     }
 
@@ -1488,6 +1498,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Variants!");
                         debug!("Variant Pos: {}", variant.pos());
                         debug!("Variant EndPos: {}", variant.end_pos());
+                        debug!("Exon Start: {} Exon End: {}", exon.start, exon.end);
+                        debug!("First Exon {}", is_first_exon);
+                        let is_start_loss = match transcript.strand {
+                            PhasingStrand::Forward => is_first_exon && variant.pos() >= exon.start && variant.pos() < (exon.start + 3),
+                            PhasingStrand::Reverse => is_first_exon && variant.pos() < exon.end && variant.pos() >= (exon.end - 3),
+                        };
+                        if is_start_loss {
+                            start_loss.push(variant.pos());
+                        }
+
                         match variant { 
                             Variant::Deletion { .. } => {
                                 match transcript.strand {
@@ -1506,9 +1526,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             }
                         }
                     }
-
+                    debug!("Start loss vector {:?}", start_loss);
                     // add columns
-                    observations.extend_right(variants)?;
+                    observations.extend_right(variants, &start_loss)?;
                     let mut stopped_frameshift = 3;
                     let mut active_frameshifts = match transcript.strand {
                         PhasingStrand::Forward => frameshifts.range(..offset),
