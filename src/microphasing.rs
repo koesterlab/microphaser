@@ -58,9 +58,34 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
     return false;
 }
 
+pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
+    match variant {
+        &Variant::SNV { pos, alt, .. } => {
+            let quals = read.qual();
+            let relative_pos = pos - read.pos() as u32;
+            if relative_pos < quals.len() as u32 { 
+                let q = quals[relative_pos as usize];
+                if q < 10 {
+                    return Ok(true);
+                }
+            }
+        }
+        _ => return Ok(false),
+    }
+    Ok(false)
+}
+
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
     match variant {
         &Variant::SNV { pos, alt, .. } => {
+            let quals = read.qual();
+            let relative_pos = pos - read.pos() as u32;
+            if relative_pos < quals.len() as u32 { 
+                let q = quals[relative_pos as usize];
+                if q < 10 {
+                    return Ok(false);
+                }
+            }
             let b = match read.cigar().read_pos(pos, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
@@ -283,6 +308,7 @@ pub struct Observation {
     read: bam::Record,
     haplotype: u64,
     frame: u32,
+    bad_qual: bool
 }
 
 impl Observation {
@@ -308,7 +334,10 @@ impl Observation {
             debug!("Variant frameshift: {}", variant.frameshift())
 
         }
-
+        if bad_quality(&self.read, &variant)? || self.bad_qual {
+            self.haplotype = 0;
+            self.bad_qual = true;
+        }
         Ok(())
     }
 }
@@ -423,6 +452,7 @@ impl ObservationMatrix {
                 read: read,
                 haplotype: 0,
                 frame: 0,
+                bad_qual: false
             };
             for (i, variant) in self.variants.iter().rev().enumerate() {
                 debug!("Checking variant support for new reads!");
@@ -1122,6 +1152,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     let mut max_read_len = 0 as u32;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
+        if rec.mapq() < 20 {
+            continue;
+        }
         if rec.seq().len() as u32 > max_read_len {
             max_read_len = rec.seq().len() as u32;
         }
@@ -1303,7 +1336,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 last_window_vars = nvars;
                 debug!("Variants in window: {}", nvars);
                 // first window in the exon, all variants found are newly added
-                let added_vars = if offset == old_offset {
+                let added_vars = if is_first_exon_window { //offset == old_offset {
                     nvars
                 } else if is_short_exon && !read_through {
                     debug!("Short Exon");
