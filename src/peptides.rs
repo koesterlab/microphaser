@@ -176,6 +176,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
+        debug!("Current Record {:?}", record);
         let row: IDRecord = record.deserialize(None)?;
         let id = &row.id;
         let somatic_positions = &row.somatic_positions;
@@ -328,10 +329,10 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
             else {
                 debug!("Adding to record list {}", &String::from_utf8_lossy(n_peptide));
-                if current_depth > 0 {
-                    frequencies.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
-                    records.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
-                }
+                //if current_depth > 0 {
+                frequencies.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
+                records.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
+                //}
                 //records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
             }
             // check if the somatic peptide is present in the reference normal peptidome

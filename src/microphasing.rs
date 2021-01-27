@@ -42,20 +42,40 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
 }
 
 pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
-    let codonlist = match orientation == "+" {
-        true => ["TGA", "TAG", "TAA"],
-        false => ["TCA", "CTA", "TTA"],
-    };
-    let mut c = 0;
-    while c < peptide.len() {
-        for codon in codonlist.iter() {
-            if peptide[c..].starts_with(codon) {
-                return true;
-            }
-        }
-        c += 3;
+    if peptide.len() < 3 {
+        return false
     }
-    return false;
+    match orientation == "+" {
+        false => {
+            let codonlist = ["TCA", "CTA", "TTA"];
+            let mut c = peptide.len() - 3;
+            while c >= 0 {
+                for codon in codonlist.iter() {
+                    if peptide[c..].starts_with(codon) {
+                        return true;
+                    }
+                }
+                if c < 3 {
+                    return false;
+                }
+                c -= 3;
+            }
+            return false;
+        },
+        true => {
+            let codonlist = ["TGA", "TAG", "TAA"];
+            let mut c = 0;
+            while c < peptide.len() {
+                for codon in codonlist.iter() {
+                    if peptide[c..].starts_with(codon) {
+                        return true;
+                    }
+                }
+                c += 3;
+            }
+            return false;
+        },
+    }
 }
 
 pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
@@ -505,6 +525,7 @@ impl ObservationMatrix {
         is_short_exon: bool,
         frame: u32,
         mut frameshift_frequencies: BTreeMap<u32, (f64, bool)>,
+        is_first_exon_window: bool,
     ) -> Result<(Vec<HaplotypeSeq>,BTreeMap<u32, (f64, bool)>), Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
@@ -801,7 +822,7 @@ impl ObservationMatrix {
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
             debug!("splice_pos {}", splice_pos);
-            if stop_gain && splice_pos != 2 && window_len == this_window_len {
+            if stop_gain && splice_pos != 2 && window_len == this_window_len && !(is_first_exon_window) {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
                 if frame == 0 {
@@ -810,7 +831,7 @@ impl ObservationMatrix {
                 else {
                     frameshift_frequencies.remove(&frame);
                 }
-                continue;
+                //continue;
             }
             // gathering meta information on haplotype
             let mut n_variantsites = 0;
@@ -1110,7 +1131,7 @@ impl ObservationMatrix {
             haplotypes_vec.push(hap_seq);
 
             // write neopeptides, information and matching normal peptide to files
-            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 {
+            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 &&!(stop_gain) {
                 debug!("Output at offset {}", offset);
                 match splice_pos {
                     1 => fasta_writer.write(&format!("{}", record.id), None, &seq[splice_gap as usize..])?,
@@ -1278,6 +1299,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     PhasingStrand::Reverse => offset >= exon.start,
                     PhasingStrand::Forward => offset + exon_window_len <= exon.end,
                 };
+                debug!("Valid: {}", valid);
                 // reached transcript end without stopping every ORF
                 let read_through = is_last_exon && !valid;
 
@@ -1606,6 +1628,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     is_short_exon,
                                     frameshift,
                                     frameshift_frequencies,
+                                    is_first_exon_window,
                                 )
                                 .unwrap();
                             frameshift_frequencies = haplotype_results.1;
@@ -1685,7 +1708,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     };
                     is_first_exon_window = false;
                     // at a splice side, merge the last sequence of the prev exon and the first sequence of the next exon
-                    if (at_splice_side && (!is_first_exon)) {
+                    if at_splice_side && (!is_first_exon) {
                         debug!("SpliceSide");
                         let first_hap_vec = match transcript.strand {
                             PhasingStrand::Forward => &hap_vec,
