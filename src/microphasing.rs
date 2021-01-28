@@ -615,6 +615,7 @@ impl ObservationMatrix {
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
                         debug!("j: {}, variantshift: {}", j, variants[j].frameshift());
+                        
                         // if variants[j].frameshift() > 0 {
                         //     shift_in_window = true;
                         // }
@@ -629,6 +630,7 @@ impl ObservationMatrix {
                         debug!("shift in window: {}", shift_in_window);
                         debug!("frameshift: {}", variants[j].frameshift());
                         if bitvector_is_set(haplotype, bit_pos) {
+                            
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if shift_in_window > 0 {
                                 shift_is_set = true;
@@ -690,6 +692,10 @@ impl ObservationMatrix {
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
                                     debug!("Variant: DEL");
+                                    if strand == "Reverse" && variants[j].end_pos() >= window_end {
+                                        debug!("Variant not complete in window");
+                                        break;
+                                    } 
                                     // if only the first position of a deletion is in the window, nothing has been deleted
                                     match variants[j].is_germline() || i == window_end - 1 {
                                         true => {
@@ -1131,7 +1137,7 @@ impl ObservationMatrix {
             haplotypes_vec.push(hap_seq);
 
             // write neopeptides, information and matching normal peptide to files
-            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 &&!(stop_gain) {
+            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 && (!(stop_gain) || has_frameshift) {
                 debug!("Output at offset {}", offset);
                 match splice_pos {
                     1 => fasta_writer.write(&format!("{}", record.id), None, &seq[splice_gap as usize..])?,
@@ -1544,7 +1550,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         if (s % 3) > 0 {
                             let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
                             for s_ in previous {
-                                frameshifts.insert(variant.end_pos(), s_ % 3);
+                                match transcript.strand {
+                                    PhasingStrand::Forward => frameshifts.insert(variant.end_pos(), s_ % 3),
+                                    PhasingStrand::Reverse => frameshifts.insert(variant.pos(), s_ % 3),
+                                };
                             }
                         }
                     }
