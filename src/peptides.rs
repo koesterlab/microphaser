@@ -236,6 +236,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 true => &wt_peptide[i..(i + peptide_length)],
                 false => &wt_peptide
             };
+            debug!("neopeptide {}, wtpeptide {}", &String::from_utf8_lossy(n_peptide), &String::from_utf8_lossy(w_peptide));
             // skip smaller peptides not containing a somatic variant
             if w_peptide.len() == 0 && som_pos > 0 {
                 match orientation {
@@ -244,8 +245,8 @@ pub fn filter<F: io::Read, O: io::Write>(
                         continue;
                     },
                     "Reverse" => if (neopeptide.len() - (i + peptide_length)) * 3 + offset > som_pos {
-                        i += 1;
-                        continue;
+                        //i += 1;
+                        //continue;
                     },
                     _ => ()
                 };

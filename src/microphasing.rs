@@ -409,6 +409,10 @@ impl ObservationMatrix {
                 debug!("Checking new variant support in existing Reads");
                 obs.update_haplotype(i, variant, start_loss.contains(&variant.pos()))?;
             }
+            // if obs.bad_qual {
+            //     let observations = self.observations.get_mut(obs.pos()).unwrap().retain(|&x| x != obs);
+
+            // }
         }
         self.variants.extend(new_variants.into_iter());
 
@@ -490,6 +494,10 @@ impl ObservationMatrix {
                 false => end_pos,
             };
 
+            if obs.bad_qual {
+               return Ok(());
+            }
+
             self.observations
                 .entry(pos)
                 .or_insert_with(|| Vec::new())
@@ -540,6 +548,9 @@ impl ObservationMatrix {
         for obs in Itertools::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
             debug!("obs haplotype:  {}", obs.haplotype);
+            if obs.bad_qual {
+                continue;
+            }
             match frame > 0 {
                 true => *haplotypes.entry((obs.haplotype as usize, frame)).or_insert(0) += 1,
                 false => *haplotypes.entry((obs.haplotype as usize, obs.frame)).or_insert(0) += 1,
@@ -1271,7 +1282,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             debug!("Exon Offset: {}", current_exon_offset);
             let is_last_exon = exon_count as usize == exon_number;
             let is_first_exon = exon_count == 1;
-            let is_short_exon = window_len >= exon_len - current_exon_offset - (3 - current_exon_offset)%3;
+            let is_short_exon = match exon_len < 3 {
+                true => true,
+                false => window_len >= exon_len - current_exon_offset - (3 - current_exon_offset)%3,
+            };
             // if the exon is shorter than the window, we need to fix the window len for this exon
             let mut exon_window_len = match is_short_exon {
                 false => window_len,

@@ -427,7 +427,7 @@ impl IDRecord {
             nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
             nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(),
-            variant_sites: self.variant_sites.to_owned() + &rec.variant_sites,
+            variant_sites: self.variant_sites.to_owned() + "|" + &rec.variant_sites,
             somatic_positions: s_p_vec.join("|"),
             somatic_aa_change: s_aa_vec.join("|"),
             germline_positions: g_p_vec.join("|"),
