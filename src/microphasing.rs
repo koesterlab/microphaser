@@ -8,7 +8,6 @@ use sha1;
 
 use itertools::Itertools;
 
-use vec_map::VecMap;
 
 use bio::io::fasta;
 use bio::io::gff;
@@ -327,7 +326,7 @@ pub struct HaplotypeSeq {
 pub struct Observation {
     read: bam::Record,
     haplotype: u64,
-    frame: u32,
+    frame: (u32, u32),
     bad_qual: bool,
     start_loss: bool
 }
@@ -343,6 +342,9 @@ impl Observation {
         if (self.read.pos() as u32) > variant.pos() {
             panic!("bug: read starts right of variant");
         }
+        if variant.frameshift() > 0 {
+            self.frame.1 += variant.pos();
+        }
         if supports_variant(&self.read, &variant)? {
             debug!(
                 "read {} supports the variant at {}",
@@ -355,7 +357,9 @@ impl Observation {
             debug!("Start loss variant {}", has_start_loss);
             self.haplotype |= 1 << i;
             debug!("Haplotype: {}", self.haplotype);
-            self.frame += variant.frameshift();
+
+            self.frame.0 += variant.frameshift();
+
             debug!("Variant frameshift: {}", variant.frameshift())
 
         }
@@ -481,7 +485,7 @@ impl ObservationMatrix {
             let mut obs = Observation {
                 read: read,
                 haplotype: 0,
-                frame: 0,
+                frame: (0, 0),
                 bad_qual: false,
                 start_loss: false
             };
@@ -547,13 +551,22 @@ impl ObservationMatrix {
         let mut haplotypes: BTreeMap<(usize, u32), usize> = BTreeMap::new();
         for obs in Itertools::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
+            debug!("Read name: {}", String::from_utf8_lossy(obs.read.qname()));
             debug!("obs haplotype:  {}", obs.haplotype);
             if obs.bad_qual {
                 continue;
             }
+
+            debug!("Frame in window: {}", frame);
+            debug!("Frame in read: {}", obs.frame.0);
+            debug!("Variant pos with frame in read: {}", obs.frame.1);
+            if frame > 0 && obs.frame.0 != frame && obs.frame.1 != 0 {
+                continue;
+            }
+
             match frame > 0 {
                 true => *haplotypes.entry((obs.haplotype as usize, frame)).or_insert(0) += 1,
-                false => *haplotypes.entry((obs.haplotype as usize, obs.frame)).or_insert(0) += 1,
+                false => *haplotypes.entry((obs.haplotype as usize, obs.frame.0)).or_insert(0) += 1,
             };
         }
         let splice_window_len = splice_end - offset;
@@ -601,7 +614,7 @@ impl ObservationMatrix {
             let depth = self.nrows() as u32;
             let mut i = offset;
             let mut j = 0;
-            let mut window_end = splice_end;
+            let window_end = splice_end;
             // Profile for all variants: 0 - reference, 1 - germline, 2 - somatic
             let mut variant_profile = Vec::new();
             //let mut somatic_profile = Vec::new();
@@ -711,8 +724,16 @@ impl ObservationMatrix {
                                     match variants[j].is_germline() || i == window_end - 1 {
                                         true => {
                                             germline_seq.push(refseq[(i - gene.start()) as usize])
-                                        }
-                                        false => indel = true,
+                                        },
+                                        false => {
+                                            debug!("Deletion Start: {}", i - gene.start());
+                                            germline_seq.extend(&refseq[(i - gene.start()) as usize
+                                            ..(i + len + 1 - gene.start()) as usize]);
+                                            
+                                            debug!("Added refseq {}", String::from_utf8_lossy(&refseq[(i - gene.start()) as usize
+                                            ..(i + len + 1 - gene.start()) as usize]));
+                                            indel = true;
+                                        },
                                     }
                                     seq.push(refseq[(i - gene.start()) as usize]);
                                     i += len + 1;
@@ -772,7 +793,7 @@ impl ObservationMatrix {
                 frame_frequency = 0.0;
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
-            if indel || frameshift_frequencies.get(&frame).unwrap().1 || (has_frameshift && germline_seq != seq) {
+            if (indel && insertion) || (!(shift_in_window > 0) && (frameshift_frequencies.get(&frame).unwrap().1 || (has_frameshift && germline_seq != seq))) {
                 debug!("indel");
                 germline_seq.clear();
             }
@@ -799,7 +820,14 @@ impl ObservationMatrix {
                 true => seq.len() as u32,
                 false => window_len
             };
-            debug!("germline_seq: {:?} mut_seq: {:?}", germline_seq, seq);
+            let normal_window_len = match indel {
+                true => match germline_seq.len() < window_len as usize {
+                    true => germline_seq.len() as u32,
+                    false => window_len,
+                },
+                false => this_window_len
+            };
+            debug!("germline_seq: {} mut_seq: {}", String::from_utf8_lossy(&germline_seq), String::from_utf8_lossy(&seq));
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}{}", &seq, transcript.id, offset);
@@ -814,7 +842,7 @@ impl ObservationMatrix {
                 0 => String::from_utf8_lossy(&germline_seq),
                 _ => match splice_pos {
                     1 => String::from_utf8_lossy(&germline_seq[splice_gap as usize..]),
-                    0 => String::from_utf8_lossy(&germline_seq[..this_window_len as usize]),
+                    0 => String::from_utf8_lossy(&germline_seq[..normal_window_len as usize]),
                     _ => String::from_utf8_lossy(&germline_seq)
                 }
             };
@@ -839,7 +867,7 @@ impl ObservationMatrix {
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
             debug!("splice_pos {}", splice_pos);
-            if stop_gain && splice_pos != 2 && window_len == this_window_len && !(is_first_exon_window) {
+            if stop_gain && splice_pos != 2 && window_len == this_window_len && !(is_first_exon_window) && ((normal_peptide != neopeptide) || freq == 1.0) {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
                 if frame == 0 {
@@ -1692,6 +1720,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 hap_vec = haplotype_results.0;
                             }
                             debug!("hap_vec: {:?}", hap_vec);
+                            if frameshift != 0 && frameshift_frequencies.contains_key(&frameshift) {
+                                if frameshift_frequencies.get(&frameshift).unwrap().0 == 0.0 {
+                                    stopped_frameshift = key;
+                                }
+                            }
                         }
                     }
                     debug!("Frameshift frequencies {:?}", frameshift_frequencies);
