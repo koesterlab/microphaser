@@ -867,9 +867,11 @@ impl ObservationMatrix {
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
             debug!("splice_pos {}", splice_pos);
-            if stop_gain && splice_pos != 2 && window_len == this_window_len && !(is_first_exon_window) && ((normal_peptide != neopeptide) || freq == 1.0) {
+            let mut remove_peptide = false;
+            if stop_gain && splice_pos != 2 && (window_len == this_window_len || indel ) && !(is_first_exon_window) && ((normal_peptide != neopeptide) || !indel || freq == 1.0) {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
+                remove_peptide = true;
                 if frame == 0 {
                     frameshift_frequencies.insert(frame, (0.0, false));
                 }
@@ -1172,9 +1174,9 @@ impl ObservationMatrix {
             //         },
             //     };
             // }
-
-            haplotypes_vec.push(hap_seq);
-
+            if !remove_peptide {
+                haplotypes_vec.push(hap_seq);
+            }
             // write neopeptides, information and matching normal peptide to files
             if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 && (!(stop_gain) || has_frameshift) {
                 debug!("Output at offset {}", offset);
@@ -1225,7 +1227,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     let mut max_read_len = 0 as u32;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
-        if rec.mapq() < 20 {
+        if rec.mapq() < 5 {
             continue;
         }
         if rec.seq().len() as u32 > max_read_len {
@@ -1479,6 +1481,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("Offset: {} ; (Offset - (max_read_len - window_len)) = {}", offset, offset - (max_read_len - exon_window_len));
                     if offset == exon.end - exon_window_len - current_exon_offset {
                         debug!("First exon window");
+                        debug!("Read range start: {}, Read range end: {}", splice_side_offset - (max_read_len - exon_window_len), splice_side_offset + 1);
                         Itertools::flatten(
                             read_tree
                                 .range((splice_side_offset - (max_read_len - exon_window_len))..(splice_side_offset + 1))
@@ -1632,7 +1635,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             PhasingStrand::Forward => offset - exon.start,
                             PhasingStrand::Reverse => exon.end - offset,
                         };
-                        let mut has_frameshift = frameshift > 0;
+                        let has_frameshift = frameshift > 0;
                         debug!("Coding Shift: {}", coding_shift);
                         debug!("Current Exon Offset: {}", current_exon_offset);
                         debug!("Coding Shift % 3: {}", coding_shift % 3);
@@ -1662,7 +1665,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             //         }
                             //     }
                             // };
-                            let mut haplotype_results = observations
+                            let haplotype_results = observations
                                 .print_haplotypes(
                                     gene,
                                     transcript,
@@ -1684,7 +1687,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 )
                                 .unwrap();
                             frameshift_frequencies = haplotype_results.1;
-                            if haplotype_results.0.is_empty() {
+                            debug!("FrameshiftFrequencies contains Frameshift {}",frameshift_frequencies.contains_key(&frameshift));
+                            if haplotype_results.0.is_empty() || !frameshift_frequencies.contains_key(&frameshift) {
                                 stopped_frameshift = key;
                             }
                             if closed_deletion {
