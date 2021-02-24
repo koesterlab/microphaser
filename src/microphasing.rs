@@ -1174,7 +1174,7 @@ impl ObservationMatrix {
             //         },
             //     };
             // }
-            if !remove_peptide {
+            if !remove_peptide || frame == 0 {
                 haplotypes_vec.push(hap_seq);
             }
             // write neopeptides, information and matching normal peptide to files
