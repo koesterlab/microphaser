@@ -48,7 +48,7 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
         false => {
             let codonlist = ["TCA", "CTA", "TTA"];
             let mut c = peptide.len() - 3;
-            while c >= 0 {
+            loop {
                 for codon in codonlist.iter() {
                     if peptide[c..].starts_with(codon) {
                         return true;
@@ -59,7 +59,7 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
                 }
                 c -= 3;
             }
-            return false;
+            //return false;
         },
         true => {
             let codonlist = ["TGA", "TAG", "TAA"];
@@ -79,7 +79,7 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
 
 pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
     match variant {
-        &Variant::SNV { pos, alt, .. } => {
+        &Variant::SNV { pos, alt: _, .. } => {
             let quals = read.qual();
             let relative_pos = pos - read.pos() as u32;
             if relative_pos < quals.len() as u32 { 
@@ -2048,7 +2048,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             );
                                             debug!("ID-Tuple {:?}", id_tuple);
                                             debug!("Output-Map {:?}", output_map);
-                                            let mut old_freq = match output_map.get_mut(&id_tuple) {
+                                            let old_freq = match output_map.get(&id_tuple) {
                                                 Some(x) => x.1.freq,
                                                 None => 0.0,
                                             };

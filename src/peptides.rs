@@ -287,7 +287,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             row2.id = new_id;
             let frameshift = row2.frame;
             let current_freq = row2.freq;
-            let current_depth = row2.depth;
+            let _current_depth = row2.depth;
             let value_tuple = (row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string());
             //let active_variants = (vars.to_string(), germline_vars.to_string());
             if current_sites != region_sites {//current != current_variant { //som_pos != current_variant {

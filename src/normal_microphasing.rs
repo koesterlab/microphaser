@@ -1068,7 +1068,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             PhasingStrand::Forward => offset - exon.start,
                             PhasingStrand::Reverse => exon.end - offset,
                         };
-                        let mut has_frameshift = frameshift > 0;
+                        let has_frameshift = frameshift > 0;
                         debug!("Coding Shift: {}", coding_shift);
                         debug!("Current Exon Offset: {}", current_exon_offset);
                         debug!("Coding Shift % 3: {}", coding_shift % 3);
