@@ -143,13 +143,18 @@ pub fn build<F: io::Read>(
 }
 
 pub fn compute_ml( 
-    frequencies: &Vec<f64>,
+    alt_depths: &Vec<f64>,
+    depth: &Vec<u32>
 ) -> Result<f64, Box<dyn Error>> {
-    let mut x = 0.0;
-    for f in frequencies {
-        x += f;
+    let mut ad: f64 = 0.0;
+    for d in alt_depths {
+        debug!("Alt depth: {}", d);
+        ad += d;
     }
-    let max_likelihood = x / frequencies.len() as f64;
+    let depth_sum: u32 = depth.iter().sum();
+    debug!("Observed alt depth sum: {}", ad);
+    debug!("Depth * number of peptides: {}", depth_sum);
+    let max_likelihood = ad / depth_sum as f64;
     debug!("ML: {}", max_likelihood);
     Ok(max_likelihood)
 }
@@ -170,6 +175,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     let mut current_variant = (String::from(""), String::from(""), String::from(""));
     let mut region_sites = (String::from(""), String::from(""));
     let mut frequencies: BTreeMap<(u32, String, String), Vec<f64>> = BTreeMap::new();
+    let mut depth: BTreeMap<(u32, String, String), Vec<u32>> = BTreeMap::new();
     let mut records: BTreeMap<(u32, String, String), Vec<(IDRecord, String, String)>> = BTreeMap::new();
     let mut seen_peptides = HashSet::new();
     let mut stop_gained = BTreeMap::new();
@@ -223,7 +229,6 @@ pub fn filter<F: io::Read, O: io::Write>(
             let tuple = (row.transcript.clone(), row.frame);
             stop_gained.insert(tuple, offset);
         }
-
         let current_neo = neopeptide.clone();
         // iterate over the peptide in variable-length windows
         while i + peptide_length <= current_neo.len() {
@@ -287,13 +292,13 @@ pub fn filter<F: io::Read, O: io::Write>(
             row2.id = new_id;
             let frameshift = row2.frame;
             let current_freq = row2.freq;
-            let _current_depth = row2.depth;
+            let current_depth = row2.depth;
             let value_tuple = (row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string());
             //let active_variants = (vars.to_string(), germline_vars.to_string());
             if current_sites != region_sites {//current != current_variant { //som_pos != current_variant {
                 debug!("Printing records");
                 for (key, entries) in &records {
-                    let ml = compute_ml(&frequencies.get(key).unwrap()).unwrap();
+                    let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
                     for (row, np, wp) in entries {
                         let n_peptide = np.as_bytes();
                         let w_peptide = wp.as_bytes();
@@ -322,7 +327,9 @@ pub fn filter<F: io::Read, O: io::Write>(
                     }
                 }
                 frequencies.clear();
-                frequencies.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(current_freq));
+                frequencies.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(current_freq * current_depth as f64));
+                depth.clear();
+                depth.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(current_depth));
                 records.clear();
                 records.insert((frameshift, vars.to_string(), germline_vars.to_string()), vec!(value_tuple));
                 region_sites = current_sites;
@@ -331,7 +338,8 @@ pub fn filter<F: io::Read, O: io::Write>(
             else {
                 debug!("Adding to record list {}", &String::from_utf8_lossy(n_peptide));
                 //if current_depth > 0 {
-                frequencies.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq)).push(current_freq);
+                depth.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_depth)).push(current_depth);
+                frequencies.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(current_freq * current_depth as f64)).push(current_freq * current_depth as f64);
                 records.entry((frameshift, vars.to_string(), germline_vars.to_string())).or_insert(vec!(value_tuple.clone())).push(value_tuple);
                 //}
                 //records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
@@ -359,7 +367,7 @@ pub fn filter<F: io::Read, O: io::Write>(
     }
     debug!("Printing records");
     for (key, entries) in &records {
-        let ml = compute_ml(&frequencies.get(key).unwrap()).unwrap();
+        let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
         for (row, np, wp) in entries {
             let n_peptide = np.as_bytes();
             let w_peptide = wp.as_bytes();
