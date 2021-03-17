@@ -1834,13 +1834,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 //Test: Keep even wildtype records for merging if we are in a short exon
                                 if is_short_exon && !is_last_exon {
                                     debug!("Exon is shorter than window - merge");
+                                    let out_freq = match record.freq == prev_record.freq {
+                                        true => record.freq,
+                                        false => record.freq * prev_record.freq,  
+                                    };
                                     let new_hap_seq =  HaplotypeSeq {
                                         sequence: Vec::new(),
                                         record: prev_record.update(
                                             record,
                                             0,
                                             record.frame,
-                                            record.freq,
+                                            out_freq,
                                             new_wt_sequence.to_vec(),
                                             new_wt_sequence.to_vec(),
                                             window_len
@@ -1863,13 +1867,17 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Prevrecord: {:?}", prev_record);
                                         debug!("Record: {:?}", record);
                                         debug!("Exon is shorter than window - merge");
+                                        let out_freq = match record.freq == prev_record.freq {
+                                            true => record.freq,
+                                            false => record.freq * prev_record.freq,  
+                                        };
                                         let new_hap_seq =  HaplotypeSeq {
                                             sequence: Vec::new(),
                                             record: prev_record.update(
                                                 record,
                                                 0,
                                                 record.frame,
-                                                record.freq,
+                                                out_freq,
                                                 new_wt_sequence.to_vec(),
                                                 new_mt_sequence.to_vec(),
                                                 window_len
