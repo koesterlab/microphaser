@@ -547,6 +547,7 @@ impl ObservationMatrix {
             PhasingStrand::Forward => variants_forward,
         };
         let mut frame = frame;
+        let mut frame_depth = 0;
         // count haplotypes
         let mut haplotypes: BTreeMap<(usize, u32), usize> = BTreeMap::new();
         for obs in Itertools::flatten(self.observations.values()) {
@@ -563,7 +564,7 @@ impl ObservationMatrix {
             if frame > 0 && obs.frame.0 != frame && obs.frame.1 != 0 {
                 continue;
             }
-
+            frame_depth += 1;
             match frame > 0 {
                 true => *haplotypes.entry((obs.haplotype as usize, frame)).or_insert(0) += 1,
                 false => *haplotypes.entry((obs.haplotype as usize, obs.frame.0)).or_insert(0) += 1,
@@ -609,7 +610,7 @@ impl ObservationMatrix {
             let mut n_variants = 0;
             let freq = match *count == 0 as usize {
                 true => 0.0,
-                false => *count as f64 / self.nrows() as f64,
+                false => *count as f64 / frame_depth as f64,
             };
             let depth = self.nrows() as u32;
             let mut i = offset;
