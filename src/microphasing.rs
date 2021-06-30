@@ -9,7 +9,6 @@ use sha1;
 
 use itertools::Itertools;
 
-
 use bio::io::fasta;
 use bio::io::gff;
 
@@ -18,8 +17,7 @@ use rust_htslib::{bam, bcf};
 
 use bio_types::strand::Strand;
 
-use crate::common::{Gene, Variant, Interval, Transcript, PhasingStrand, IDRecord};
-
+use crate::common::{Gene, IDRecord, Interval, PhasingStrand, Transcript, Variant};
 
 pub fn bitvector_is_set(b: u64, k: usize) -> bool {
     (b & (1 << k)) != 0
@@ -43,7 +41,7 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
 
 pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
     if peptide.len() < 3 {
-        return false
+        return false;
     }
     match orientation == "+" {
         false => {
@@ -60,7 +58,7 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
                 }
                 c -= 3;
             }
-        },
+        }
         true => {
             let codonlist = ["TGA", "TAG", "TAA"];
             let mut c = 0;
@@ -73,7 +71,7 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
                 c += 3;
             }
             return false;
-        },
+        }
     }
 }
 
@@ -82,7 +80,7 @@ pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dy
         &Variant::SNV { pos, alt: _, .. } => {
             let quals = read.qual();
             let relative_pos = pos - read.pos() as u64;
-            if relative_pos < quals.len() as u64 { 
+            if relative_pos < quals.len() as u64 {
                 let q = quals[relative_pos as usize];
                 if q < 10 {
                     return Ok(true);
@@ -99,7 +97,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
         &Variant::SNV { pos, alt, .. } => {
             let quals = read.qual();
             let relative_pos = pos - read.pos() as u64;
-            if relative_pos < quals.len() as u64 { 
+            if relative_pos < quals.len() as u64 {
                 let q = quals[relative_pos as usize];
                 if q < 10 {
                     return Ok(false);
@@ -114,7 +112,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
         }
         &Variant::Insertion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
-            debug!("Variant length {}", len );
+            debug!("Variant length {}", len);
             for c in read.cigar().iter() {
                 match c {
                     &Cigar::Ins(_) => match c.len() == len as u32 {
@@ -154,11 +152,16 @@ pub struct Observation {
     haplotype: u64,
     frame: (u64, u64),
     bad_qual: bool,
-    start_loss: bool
+    start_loss: bool,
 }
 
 impl Observation {
-    pub fn update_haplotype(&mut self, i: usize, variant: &Variant, has_start_loss: bool) -> Result<(), Box<dyn Error>> {
+    pub fn update_haplotype(
+        &mut self,
+        i: usize,
+        variant: &Variant,
+        has_start_loss: bool,
+    ) -> Result<(), Box<dyn Error>> {
         debug!(
             "Read name {} ; Read pos {} ; variant pos {}",
             String::from_utf8_lossy(self.read.qname()),
@@ -187,7 +190,6 @@ impl Observation {
             self.frame.0 += variant.frameshift();
 
             debug!("Variant frameshift: {}", variant.frameshift())
-
         }
         if bad_quality(&self.read, &variant)? || self.bad_qual || self.start_loss {
             self.haplotype = 0;
@@ -223,7 +225,11 @@ impl ObservationMatrix {
     }
 
     /// Add new variants
-    pub fn extend_right(&mut self, new_variants: Vec<Variant>, start_loss: &Vec<u64>) -> Result<(), Box<dyn Error>> {
+    pub fn extend_right(
+        &mut self,
+        new_variants: Vec<Variant>,
+        start_loss: &Vec<u64>,
+    ) -> Result<(), Box<dyn Error>> {
         let k = new_variants.len();
         debug!("Extend variants!");
         debug!("New variants {}", k);
@@ -298,18 +304,18 @@ impl ObservationMatrix {
             "Read Start: {}, Read End: {} - Window Start: {}, Window End {}",
             start_pos, end_pos, interval_start, interval_end
         );
-        debug!(
-            "Read {} to be added",
-            String::from_utf8_lossy(read.qname())
-        );
-        if end_pos >= interval_end && start_pos <= interval_start && !(self.contains(&read).unwrap()) {
+        debug!("Read {} to be added", String::from_utf8_lossy(read.qname()));
+        if end_pos >= interval_end
+            && start_pos <= interval_start
+            && !(self.contains(&read).unwrap())
+        {
             // only insert if end_pos is larger than the interval end
             let mut obs = Observation {
                 read: read,
                 haplotype: 0,
                 frame: (0, 0),
                 bad_qual: false,
-                start_loss: false
+                start_loss: false,
             };
             for (i, variant) in self.variants.iter().rev().enumerate() {
                 debug!("Checking variant support for new reads!");
@@ -321,14 +327,13 @@ impl ObservationMatrix {
             };
 
             if obs.bad_qual {
-               return Ok(());
+                return Ok(());
             }
 
             self.observations
                 .entry(pos)
                 .or_insert_with(|| Vec::new())
                 .push(obs);
-
         }
         Ok(())
     }
@@ -360,7 +365,7 @@ impl ObservationMatrix {
         frame: u64,
         mut frameshift_frequencies: BTreeMap<u64, (f64, bool)>,
         is_first_exon_window: bool,
-    ) -> Result<(Vec<HaplotypeSeq>,BTreeMap<u64, (f64, bool)>), Box<dyn Error>> {
+    ) -> Result<(Vec<HaplotypeSeq>, BTreeMap<u64, (f64, bool)>), Box<dyn Error>> {
         let variants_forward = self.variants.iter().collect_vec();
         let mut variants_reverse = variants_forward.clone();
         variants_reverse.reverse();
@@ -388,8 +393,16 @@ impl ObservationMatrix {
             }
             frame_depth += 1;
             match frame > 0 {
-                true => *haplotypes.entry((obs.haplotype as usize, frame)).or_insert(0) += 1,
-                false => *haplotypes.entry((obs.haplotype as usize, obs.frame.0)).or_insert(0) += 1,
+                true => {
+                    *haplotypes
+                        .entry((obs.haplotype as usize, frame))
+                        .or_insert(0) += 1
+                }
+                false => {
+                    *haplotypes
+                        .entry((obs.haplotype as usize, obs.frame.0))
+                        .or_insert(0) += 1
+                }
             };
         }
         let splice_window_len = splice_end - offset;
@@ -418,7 +431,10 @@ impl ObservationMatrix {
             // VecMap forces usize as type for keys, but our haplotypes as u64
             let haplotype = haplotype_tuple.0 as u64;
             let haplotype_frame = haplotype_tuple.1;
-            debug!("Frame of Haplotype - inferred from reads: {}", haplotype_frame);
+            debug!(
+                "Frame of Haplotype - inferred from reads: {}",
+                haplotype_frame
+            );
             let mut indel = false;
             let mut insertion = false;
             let mut shift_is_set = false;
@@ -444,12 +460,10 @@ impl ObservationMatrix {
             if variants.is_empty() {
                 debug!("Test {}", offset - gene.start());
                 germline_seq.extend(
-                    &refseq[(offset - gene.start()) as usize
-                        ..(window_end - gene.start()) as usize],
+                    &refseq[(offset - gene.start()) as usize..(window_end - gene.start()) as usize],
                 );
                 seq.extend(
-                    &refseq[(offset - gene.start()) as usize
-                        ..(window_end - gene.start()) as usize],
+                    &refseq[(offset - gene.start()) as usize..(window_end - gene.start()) as usize],
                 );
             } else {
                 while i < window_end {
@@ -467,16 +481,18 @@ impl ObservationMatrix {
                         };
                         let bit_pos = match transcript.strand {
                             PhasingStrand::Reverse => j,
-                            PhasingStrand::Forward => variants.len() - 1 -j,
+                            PhasingStrand::Forward => variants.len() - 1 - j,
                         };
                         debug!("shift in window: {}", shift_in_window);
                         debug!("frameshift: {}", variants[j].frameshift());
                         if bitvector_is_set(haplotype, bit_pos) {
-                            
                             debug!("Haplotype: {} ; j: {}", haplotype, j);
                             if shift_in_window > 0 {
                                 shift_is_set = true;
-                                frameshift_frequencies.insert(variants[j].frameshift(), (freq, !(variants[j].is_germline())));
+                                frameshift_frequencies.insert(
+                                    variants[j].frameshift(),
+                                    (freq, !(variants[j].is_germline())),
+                                );
                                 frameshift_frequencies.insert(0, (1.0 - freq, false));
                                 debug!("Frameshift frequencies {:?}", frameshift_frequencies);
                             }
@@ -529,21 +545,28 @@ impl ObservationMatrix {
                                     if strand == "Reverse" && variants[j].end_pos() >= window_end {
                                         debug!("Variant not complete in window");
                                         break;
-                                    } 
+                                    }
                                     // if only the first position of a deletion is in the window, nothing has been deleted
                                     match variants[j].is_germline() || i == window_end - 1 {
                                         true => {
                                             germline_seq.push(refseq[(i - gene.start()) as usize])
-                                        },
+                                        }
                                         false => {
                                             debug!("Deletion Start: {}", i - gene.start());
-                                            germline_seq.extend(&refseq[(i - gene.start()) as usize
-                                            ..(i + len + 1 - gene.start()) as usize]);
-                                            
-                                            debug!("Added refseq {}", String::from_utf8_lossy(&refseq[(i - gene.start()) as usize
-                                            ..(i + len + 1 - gene.start()) as usize]));
+                                            germline_seq.extend(
+                                                &refseq[(i - gene.start()) as usize
+                                                    ..(i + len + 1 - gene.start()) as usize],
+                                            );
+
+                                            debug!(
+                                                "Added refseq {}",
+                                                String::from_utf8_lossy(
+                                                    &refseq[(i - gene.start()) as usize
+                                                        ..(i + len + 1 - gene.start()) as usize]
+                                                )
+                                            );
                                             indel = true;
-                                        },
+                                        }
                                     }
                                     seq.push(refseq[(i - gene.start()) as usize]);
                                     i += len + 1;
@@ -598,7 +621,11 @@ impl ObservationMatrix {
                 frame_frequency = 0.0;
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
-            if (indel && insertion) || (!(shift_in_window > 0) && (frameshift_frequencies.get(&frame).unwrap().1 || (has_frameshift && germline_seq != seq))) {
+            if (indel && insertion)
+                || (!(shift_in_window > 0)
+                    && (frameshift_frequencies.get(&frame).unwrap().1
+                        || (has_frameshift && germline_seq != seq)))
+            {
                 debug!("indel");
                 germline_seq.clear();
             }
@@ -623,16 +650,20 @@ impl ObservationMatrix {
             }
             let this_window_len = match seq.len() < window_len as usize {
                 true => seq.len() as u64,
-                false => window_len
+                false => window_len,
             };
             let normal_window_len = match indel {
                 true => match germline_seq.len() < window_len as usize {
                     true => germline_seq.len() as u64,
                     false => window_len,
                 },
-                false => this_window_len
+                false => this_window_len,
             };
-            debug!("germline_seq: {} mut_seq: {}", String::from_utf8_lossy(&germline_seq), String::from_utf8_lossy(&seq));
+            debug!(
+                "germline_seq: {} mut_seq: {}",
+                String::from_utf8_lossy(&germline_seq),
+                String::from_utf8_lossy(&seq)
+            );
             let mut shaid = sha1::Sha1::new();
             // generate unique haplotype ID containing position, transcript and sequence
             let id = format!("{:?}{}{}", &seq, transcript.id, offset);
@@ -648,8 +679,8 @@ impl ObservationMatrix {
                 _ => match splice_pos {
                     1 => String::from_utf8_lossy(&germline_seq[splice_gap as usize..]),
                     0 => String::from_utf8_lossy(&germline_seq[..normal_window_len as usize]),
-                    _ => String::from_utf8_lossy(&germline_seq)
-                }
+                    _ => String::from_utf8_lossy(&germline_seq),
+                },
             };
             // neopeptide sequence
             let neopeptide = match splice_pos {
@@ -658,25 +689,29 @@ impl ObservationMatrix {
                     true => String::from_utf8_lossy(&seq),
                     false => String::from_utf8_lossy(&seq[..this_window_len as usize]),
                 },
-                _ => String::from_utf8_lossy(&seq)
+                _ => String::from_utf8_lossy(&seq),
             };
             let stop_gain = match transcript.strand {
                 PhasingStrand::Forward => has_stop_codon(neopeptide.to_string(), "+"),
-                PhasingStrand::Reverse => has_stop_codon(neopeptide.to_string(), "-")
-             };
+                PhasingStrand::Reverse => has_stop_codon(neopeptide.to_string(), "-"),
+            };
             debug!("stop_gain {}", stop_gain);
             debug!("Neopeptide: {}", neopeptide);
             debug!("Germline peptide: {}", normal_peptide);
             debug!("splice_pos {}", splice_pos);
             let mut remove_peptide = false;
-            if stop_gain && splice_pos != 2 && (window_len == this_window_len || indel ) && !(is_first_exon_window) && ((normal_peptide != neopeptide) || !indel || freq == 1.0) {
+            if stop_gain
+                && splice_pos != 2
+                && (window_len == this_window_len || indel)
+                && !(is_first_exon_window)
+                && ((normal_peptide != neopeptide) || !indel || freq == 1.0)
+            {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
                 remove_peptide = true;
                 if frame == 0 {
                     frameshift_frequencies.insert(frame, (0.0, false));
-                }
-                else {
+                } else {
                     frameshift_frequencies.remove(&frame);
                 }
                 //continue;
@@ -702,12 +737,12 @@ impl ObservationMatrix {
                         2 => {
                             somatic_var_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                             somatic_p_changes_vec.push(variants[c as usize].prot_change());
-                        },
+                        }
                         // germline
                         1 => {
                             germline_var_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                             germline_p_changes_vec.push(variants[c as usize].prot_change());
-                        },
+                        }
                         // not present in this haplotype
                         _ => {}
                     }
@@ -719,8 +754,7 @@ impl ObservationMatrix {
                     if !(variants[c as usize].is_germline()) {
                         n_som_variantsites += 1;
                     }
-                }
-                else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                     n_variantsites += 1;
                     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                     if !(variants[c as usize].is_germline()) {
@@ -737,7 +771,7 @@ impl ObservationMatrix {
 
             let inframe_offset = match splice_pos {
                 0 => offset + 1,
-                _ => offset + 1 + splice_gap
+                _ => offset + 1 + splice_gap,
             };
 
             // build the info record
@@ -808,17 +842,38 @@ impl ObservationMatrix {
                 haplotypes_vec.push(hap_seq);
             }
             // write neopeptides, information and matching normal peptide to files
-            if (record.nsomatic > 0 || has_frameshift) && !(is_short_exon) && !(germline_seq == seq) && record.freq > 0.0 && (!(stop_gain) || has_frameshift) {
+            if (record.nsomatic > 0 || has_frameshift)
+                && !(is_short_exon)
+                && !(germline_seq == seq)
+                && record.freq > 0.0
+                && (!(stop_gain) || has_frameshift)
+            {
                 debug!("Output at offset {}", offset);
                 match splice_pos {
-                    1 => fasta_writer.write(&format!("{}", record.id), None, &seq[splice_gap as usize..])?,
-                    0 => fasta_writer.write(&format!("{}", record.id), None, &seq[..this_window_len as usize])?,
+                    1 => fasta_writer.write(
+                        &format!("{}", record.id),
+                        None,
+                        &seq[splice_gap as usize..],
+                    )?,
+                    0 => fasta_writer.write(
+                        &format!("{}", record.id),
+                        None,
+                        &seq[..this_window_len as usize],
+                    )?,
                     _ => {}
                 };
                 if germline_seq.len() > 0 {
                     match splice_pos {
-                        1 => normal_writer.write(&format!("{}", record.id), None, &germline_seq[splice_gap as usize..])?,
-                        0 => normal_writer.write(&format!("{}", record.id), None, &germline_seq[..this_window_len as usize])?,
+                        1 => normal_writer.write(
+                            &format!("{}", record.id),
+                            None,
+                            &germline_seq[splice_gap as usize..],
+                        )?,
+                        0 => normal_writer.write(
+                            &format!("{}", record.id),
+                            None,
+                            &germline_seq[..this_window_len as usize],
+                        )?,
                         _ => {}
                     };
                 }
@@ -846,7 +901,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_reader.fetch(
         &gene.chrom,
         gene.start() as u64,
-        (gene.end() + end_overflow) as u64
+        (gene.end() + end_overflow) as u64,
     )?;
     fasta_reader.read(refseq)?;
     let mut variant_tree = BTreeMap::new();
@@ -886,7 +941,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         .map(|rec| variant_tree.insert(rec.pos() as u64, Variant::new(rec).unwrap()))
         .collect_vec();
 
-
     for transcript in &gene.transcripts {
         debug!("Transcript {}", transcript.id);
         debug!("is coding: {}", transcript.is_coding());
@@ -901,9 +955,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         let mut deletions = Vec::new();
         match transcript.strand {
             PhasingStrand::Forward => frameshifts.insert(0, 0),
-            PhasingStrand::Reverse => frameshifts.insert(gene.end(), 0)
+            PhasingStrand::Reverse => frameshifts.insert(gene.end(), 0),
         };
-        
+
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
         // Haplotypes from the end of the last exon
@@ -932,7 +986,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             // Possible offset at the exon start, first nucleotides could be part of a codon started in the previous exon
             let exon_len = exon.end - exon.start;
             debug!("Exon Rest: {}", exon_rest);
-            let current_exon_offset = match exon_count { 
+            let current_exon_offset = match exon_count {
                 1 => exon.frame, //u32::from_str(exon.frame).unwrap(),
                 _ => match exon_rest {
                     0 => 0,
@@ -944,7 +998,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             let is_first_exon = exon_count == 1;
             let is_short_exon = match exon_len < 3 {
                 true => true,
-                false => window_len >= exon_len - current_exon_offset - (3 - current_exon_offset)%3,
+                false => {
+                    window_len >= exon_len - current_exon_offset - (3 - current_exon_offset) % 3
+                }
             };
             debug!("Short Exon: {}", is_short_exon);
             // if the exon is shorter than the window, we need to fix the window len for this exon
@@ -995,46 +1051,68 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     PhasingStrand::Forward => exon.end - (offset + exon_window_len),
                     PhasingStrand::Reverse => offset - exon.start,
                 };
-                
+
                 debug!("First Exon Window: {}", is_first_exon_window);
                 let is_last_exon_window = rest < 3;
                 debug!("Last Exon Window: {}", is_last_exon_window);
-                let (splice_side_offset, splice_end, splice_gap, splice_pos) = match transcript.strand {
-                    PhasingStrand::Forward => {
-                        if is_short_exon {
-                            (offset - current_exon_offset, offset + exon_window_len + rest, current_exon_offset + rest, 2)
-                        }
-                        else if is_first_exon_window {
-                            if is_last_exon_window {
-                                (offset - current_exon_offset, offset + exon_window_len + rest, current_exon_offset + rest, 2)
+                let (splice_side_offset, splice_end, splice_gap, splice_pos) =
+                    match transcript.strand {
+                        PhasingStrand::Forward => {
+                            if is_short_exon {
+                                (
+                                    offset - current_exon_offset,
+                                    offset + exon_window_len + rest,
+                                    current_exon_offset + rest,
+                                    2,
+                                )
+                            } else if is_first_exon_window {
+                                if is_last_exon_window {
+                                    (
+                                        offset - current_exon_offset,
+                                        offset + exon_window_len + rest,
+                                        current_exon_offset + rest,
+                                        2,
+                                    )
+                                } else {
+                                    (
+                                        offset - current_exon_offset,
+                                        offset + exon_window_len,
+                                        current_exon_offset,
+                                        1,
+                                    )
+                                }
+                            } else if is_last_exon_window {
+                                (offset, offset + exon_window_len + rest, rest, 0)
+                            } else {
+                                (offset, offset + exon_window_len, 0, 0)
                             }
-                            else {
-                                (offset - current_exon_offset, offset + exon_window_len, current_exon_offset, 1)
+                        }
+                        PhasingStrand::Reverse => {
+                            if is_short_exon {
+                                (
+                                    offset - rest,
+                                    offset + exon_window_len + current_exon_offset,
+                                    current_exon_offset + rest,
+                                    2,
+                                )
+                            } else if is_first_exon_window {
+                                (
+                                    offset,
+                                    offset + exon_window_len + current_exon_offset,
+                                    current_exon_offset,
+                                    0,
+                                )
+                            } else if is_last_exon_window {
+                                (offset - rest, offset + exon_window_len, rest, 1)
+                            } else {
+                                (offset, offset + exon_window_len, 0, 0)
                             }
                         }
-                        else if is_last_exon_window {
-                            (offset, offset + exon_window_len + rest, rest, 0)
-                        }
-                        else {
-                            (offset, offset + exon_window_len, 0, 0)
-                        }
-                    },
-                    PhasingStrand::Reverse => {
-                        if is_short_exon {
-                            (offset - rest, offset + exon_window_len + current_exon_offset, current_exon_offset + rest, 2)
-                        }
-                        else if is_first_exon_window {
-                            (offset, offset + exon_window_len + current_exon_offset, current_exon_offset, 0)
-                        }
-                        else if is_last_exon_window {
-                            (offset - rest, offset + exon_window_len, rest, 1)
-                        }
-                        else {
-                            (offset, offset + exon_window_len, 0, 0)
-                        }
-                    }
-                };
-                debug!("Splice_offset {}, Offset {}, old offset {}", splice_side_offset, offset, old_offset);
+                    };
+                debug!(
+                    "Splice_offset {}, Offset {}, old offset {}",
+                    splice_side_offset, offset, old_offset
+                );
                 debug!("WinStart {}, WinEnd {}", splice_side_offset, splice_end);
                 debug!("{}", old_offset + window_len);
                 // advance window to next position
@@ -1048,29 +1126,33 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 last_window_vars = nvars;
                 debug!("Variants in window: {}", nvars);
                 // first window in the exon, all variants found are newly added
-                let added_vars = if is_first_exon_window { //offset == old_offset {
+                let added_vars = if is_first_exon_window {
+                    //offset == old_offset {
                     nvars
                 } else if is_short_exon && !read_through {
                     debug!("Short Exon");
                     0
-                // The final variants have been added in a previous iteration    
+                // The final variants have been added in a previous iteration
                 } else if reached_end && !read_through {
                     debug!("End of Exon reached");
                     0
                 // if we advance the window (forward or reverse), just the newly added variants are counted
                 // forward orientation
                 } else if splice_side_offset > old_offset {
-                    debug!("variant range: {:?}", variant_tree.range(old_end..splice_end));
+                    debug!(
+                        "variant range: {:?}",
+                        variant_tree.range(old_end..splice_end)
+                    );
+                    Itertools::flatten(variant_tree.range((old_end)..(splice_end)).map(|var| var.1))
+                        .count()
+                // reverse orientation
+                } else {
                     Itertools::flatten(
                         variant_tree
-                            .range((old_end)..(splice_end))
+                            .range(splice_side_offset..old_offset)
                             .map(|var| var.1),
                     )
                     .count()
-                // reverse orientation
-                } else {
-                    Itertools::flatten(variant_tree.range(splice_side_offset..old_offset).map(|var| var.1))
-                        .count()
                 };
 
                 // first window in the exon, no variants are deleted
@@ -1081,20 +1163,24 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
                 } else if splice_side_offset > old_offset {
-                    Itertools::flatten(variant_tree.range(old_offset..splice_side_offset).map(|var| var.1))
-                        .count()
+                    Itertools::flatten(
+                        variant_tree
+                            .range(old_offset..splice_side_offset)
+                            .map(|var| var.1),
+                    )
+                    .count()
                 // reverse orientation
                 } else {
                     Itertools::flatten(
                         variant_tree
-                            .range((splice_end)..old_end)//(old_offset + exon_window_len))
+                            .range((splice_end)..old_end) //(old_offset + exon_window_len))
                             .map(|var| var.1),
                     )
                     .count()
                 };
 
                 // The final variants have been added in this iteration
-                if is_last_exon_window  && !read_through {
+                if is_last_exon_window && !read_through {
                     reached_end = true;
                 }
 
@@ -1102,19 +1188,28 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 debug!("Old offset + wlen: {}", old_offset + exon_window_len);
                 debug!(
                     "Offset: {} - max_read_len {} - window_len {}",
-                    offset,
-                    max_read_len,
-                    exon_window_len
+                    offset, max_read_len, exon_window_len
                 );
                 let reads = if transcript.strand == PhasingStrand::Reverse {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
-                    debug!("Offset: {} ; (Offset - (max_read_len - window_len)) = {}", offset, offset - (max_read_len - exon_window_len));
+                    debug!(
+                        "Offset: {} ; (Offset - (max_read_len - window_len)) = {}",
+                        offset,
+                        offset - (max_read_len - exon_window_len)
+                    );
                     if offset == exon.end - exon_window_len - current_exon_offset {
                         debug!("First exon window");
-                        debug!("Read range start: {}, Read range end: {}", splice_side_offset - (max_read_len - exon_window_len), splice_side_offset + 1);
+                        debug!(
+                            "Read range start: {}, Read range end: {}",
+                            splice_side_offset - (max_read_len - exon_window_len),
+                            splice_side_offset + 1
+                        );
                         Itertools::flatten(
                             read_tree
-                                .range((splice_side_offset - (max_read_len - exon_window_len))..(splice_side_offset + 1))
+                                .range(
+                                    (splice_side_offset - (max_read_len - exon_window_len))
+                                        ..(splice_side_offset + 1),
+                                )
                                 .map(|rec| rec.1),
                         )
                         .collect_vec()
@@ -1136,7 +1231,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     if offset == exon.start + current_exon_offset {
                         Itertools::flatten(
                             read_tree
-                                .range((splice_side_offset - (max_read_len - exon_window_len))..(splice_side_offset + 1))
+                                .range(
+                                    (splice_side_offset - (max_read_len - exon_window_len))
+                                        ..(splice_side_offset + 1),
+                                )
                                 .map(|rec| rec.1),
                         )
                         .collect_vec()
@@ -1144,7 +1242,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                     else {
                         Itertools::flatten(
-                            read_tree.range((splice_side_offset)..(splice_side_offset + 1)).map(|rec| rec.1),
+                            read_tree
+                                .range((splice_side_offset)..(splice_side_offset + 1))
+                                .map(|rec| rec.1),
                         )
                         .collect_vec()
                     }
@@ -1205,21 +1305,29 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Exon Start: {} Exon End: {}", exon.start, exon.end);
                         debug!("First Exon {}", is_first_exon);
                         let is_start_loss = match transcript.strand {
-                            PhasingStrand::Forward => is_first_exon && variant.pos() >= exon.start && variant.pos() < (exon.start + 3),
-                            PhasingStrand::Reverse => is_first_exon && variant.pos() < exon.end && variant.pos() >= (exon.end - 3),
+                            PhasingStrand::Forward => {
+                                is_first_exon
+                                    && variant.pos() >= exon.start
+                                    && variant.pos() < (exon.start + 3)
+                            }
+                            PhasingStrand::Reverse => {
+                                is_first_exon
+                                    && variant.pos() < exon.end
+                                    && variant.pos() >= (exon.end - 3)
+                            }
                         };
                         if is_start_loss {
                             start_loss.push(variant.pos());
                         }
 
-                        match variant { 
+                        match variant {
                             Variant::Deletion { .. } => {
                                 match transcript.strand {
                                     PhasingStrand::Forward => deletions.push(variant.end_pos()),
                                     PhasingStrand::Reverse => deletions.push(variant.pos()),
                                 };
-                            },
-                            _ => (),   
+                            }
+                            _ => (),
                         }
                         let s = variant.frameshift();
                         debug!("Frameshift from Variant: {}", s);
@@ -1227,8 +1335,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             let previous = frameshifts.values().map(|prev| prev + s).collect_vec();
                             for s_ in previous {
                                 match transcript.strand {
-                                    PhasingStrand::Forward => frameshifts.insert(variant.end_pos(), s_ % 3),
-                                    PhasingStrand::Reverse => frameshifts.insert(variant.pos(), s_ % 3),
+                                    PhasingStrand::Forward => {
+                                        frameshifts.insert(variant.end_pos(), s_ % 3)
+                                    }
+                                    PhasingStrand::Reverse => {
+                                        frameshifts.insert(variant.pos(), s_ % 3)
+                                    }
                                 };
                             }
                         }
@@ -1242,8 +1354,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
                     };
                     debug!("Active frameshifts: {:?}", active_frameshifts);
-                    
-                    let closed_deletion = match deletions.is_empty(){
+
+                    let closed_deletion = match deletions.is_empty() {
                         false => match transcript.strand {
                             PhasingStrand::Forward => deletions[0] < offset,
                             PhasingStrand::Reverse => deletions[0] >= offset + exon_window_len,
@@ -1252,7 +1364,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     };
                     let mut frameshift_count = 0;
                     let mut main_orf = false;
-                    for (&key, &frameshift) in &mut active_frameshifts {//frameshifts.range(..offset) {
+                    for (&key, &frameshift) in &mut active_frameshifts {
+                        //frameshifts.range(..offset) {
                         // possible shift if exon starts with the rest of a split codon (splicing)
                         debug!("Frameshift: {}", frameshift);
                         frameshift_count += 1;
@@ -1270,10 +1383,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         debug!("Current Exon Offset: {}", current_exon_offset);
                         debug!("Coding Shift % 3: {}", coding_shift % 3);
                         debug!("Shift: {}", (frameshift + current_exon_offset) % 3);
-                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3 || (is_short_exon  && !read_through) {
+                        if coding_shift % 3 == (frameshift + current_exon_offset) % 3
+                            || (is_short_exon && !read_through)
+                        {
                             // print haplotypes
                             debug!("Should print haplotypes");
-                            if !has_frameshift  && !read_through {
+                            if !has_frameshift && !read_through {
                                 //follows the main ORF - not including frameshifts!
                                 // possible unfinished codon at the end of an exon that continues at the start of the next exon
                                 exon_rest = match transcript.strand {
@@ -1281,7 +1396,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     PhasingStrand::Reverse => offset - exon.start,
                                 };
                                 if exon_window_len < 3 {
-                                    debug!("Window shorter than one codon, length: {}", exon_window_len);
+                                    debug!(
+                                        "Window shorter than one codon, length: {}",
+                                        exon_window_len
+                                    );
                                     exon_rest = exon_window_len;
                                 }
                             }
@@ -1317,14 +1435,23 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 )
                                 .unwrap();
                             frameshift_frequencies = haplotype_results.1;
-                            debug!("FrameshiftFrequencies contains Frameshift {}",frameshift_frequencies.contains_key(&frameshift));
-                            if haplotype_results.0.is_empty() || !frameshift_frequencies.contains_key(&frameshift) {
+                            debug!(
+                                "FrameshiftFrequencies contains Frameshift {}",
+                                frameshift_frequencies.contains_key(&frameshift)
+                            );
+                            if haplotype_results.0.is_empty()
+                                || !frameshift_frequencies.contains_key(&frameshift)
+                            {
                                 stopped_frameshift = key;
                             }
                             if closed_deletion {
                                 deletions.clear();
                             }
-                            if (exon_rest < 3) && ((!is_short_exon) || is_first_exon) && !has_frameshift && !read_through {
+                            if (exon_rest < 3)
+                                && ((!is_short_exon) || is_first_exon)
+                                && !has_frameshift
+                                && !read_through
+                            {
                                 debug!("Exon Rest {}", exon_rest);
                                 prev_hap_vec = haplotype_results.0;
                             } else {
@@ -1339,7 +1466,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         }
                     }
                     debug!("Frameshift frequencies {:?}", frameshift_frequencies);
-                    if frameshift_count == 0 || !main_orf || !frameshift_frequencies.contains_key(&0) {
+                    if frameshift_count == 0
+                        || !main_orf
+                        || !frameshift_frequencies.contains_key(&0)
+                    {
                         // no active frameshifts
                         debug!("break!");
                         frameshifts.clear();
@@ -1443,9 +1573,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     debug!("Exon is shorter than window - merge");
                                     let out_freq = match record.freq == prev_record.freq {
                                         true => record.freq,
-                                        false => record.freq * prev_record.freq,  
+                                        false => record.freq * prev_record.freq,
                                     };
-                                    let new_hap_seq =  HaplotypeSeq {
+                                    let new_hap_seq = HaplotypeSeq {
                                         sequence: Vec::new(),
                                         record: prev_record.update(
                                             record,
@@ -1454,11 +1584,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             out_freq,
                                             new_wt_sequence.to_vec(),
                                             new_wt_sequence.to_vec(),
-                                            window_len
-                                        )
+                                            window_len,
+                                        ),
                                     };
                                     new_hap_vec.push(new_hap_seq);
-                                    debug!("New HapVec {:?}", new_hap_vec );
+                                    debug!("New HapVec {:?}", new_hap_vec);
                                 }
 
                                 // slide window over the spanning sequence
@@ -1476,9 +1606,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Exon is shorter than window - merge");
                                         let out_freq = match record.freq == prev_record.freq {
                                             true => record.freq,
-                                            false => record.freq * prev_record.freq,  
+                                            false => record.freq * prev_record.freq,
                                         };
-                                        let new_hap_seq =  HaplotypeSeq {
+                                        let new_hap_seq = HaplotypeSeq {
                                             sequence: Vec::new(),
                                             record: prev_record.update(
                                                 record,
@@ -1487,45 +1617,61 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                 out_freq,
                                                 new_wt_sequence.to_vec(),
                                                 new_mt_sequence.to_vec(),
-                                                window_len
-                                            )
+                                                window_len,
+                                            ),
                                         };
                                         new_hap_vec.push(new_hap_seq);
-                                        debug!("New HapVec {:?}", new_hap_vec );
+                                        debug!("New HapVec {:?}", new_hap_vec);
                                         continue;
                                     }
                                     let mut active_frameshifts = match transcript.strand {
                                         PhasingStrand::Forward => frameshifts.range(..offset),
-                                        PhasingStrand::Reverse => frameshifts.range(offset + exon_window_len..),
+                                        PhasingStrand::Reverse => {
+                                            frameshifts.range(offset + exon_window_len..)
+                                        }
                                     };
-                                    
+
                                     debug!("Active frameshifts: {:?}", active_frameshifts);
                                     for (&pos, &frameshift) in &mut active_frameshifts {
                                         // possible shift if exon starts with the rest of a split codon (splicing)
                                         debug!("Frameshift: {}", frameshift);
-                                        if !frameshift_frequencies.contains_key(&frameshift){
+                                        if !frameshift_frequencies.contains_key(&frameshift) {
                                             frameshift_frequencies.insert(frameshift, (0.0, false));
                                         }
 
                                         let shift_in_window = match transcript.strand {
                                             PhasingStrand::Forward => pos >= prev_record.offset,
-                                            PhasingStrand::Reverse => pos < record.offset + exon_window_len,
+                                            PhasingStrand::Reverse => {
+                                                pos < record.offset + exon_window_len
+                                            }
                                         };
 
-                                        
-                                        let somatic_shift = frameshift_frequencies.get(&frameshift).unwrap().1;
-                                        let frameshift_freq = frameshift_frequencies.get(&frameshift).unwrap().0;
+                                        let somatic_shift =
+                                            frameshift_frequencies.get(&frameshift).unwrap().1;
+                                        let frameshift_freq =
+                                            frameshift_frequencies.get(&frameshift).unwrap().0;
                                         // compute the SNV frequency per frameshift from the actual record frequency and the frameshift frequency
-                                        let main_orf_freq = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                        let main_orf_freq = match frameshift_frequencies
+                                            .get(&0)
+                                            .unwrap()
+                                            .0
+                                            == 0.0
+                                        {
                                             true => frameshift_freq,
                                             false => frameshift_frequencies.get(&0).unwrap().0,
                                         };
                                         let shift_orf_freq = match shift_in_window {
                                             true => frameshift_freq,
-                                            false => match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
-                                                true => frameshift_freq,
-                                                false => frameshift_frequencies.get(&0).unwrap().0,
-                                            },
+                                            false => {
+                                                match frameshift_frequencies.get(&0).unwrap().0
+                                                    == 0.0
+                                                {
+                                                    true => frameshift_freq,
+                                                    false => {
+                                                        frameshift_frequencies.get(&0).unwrap().0
+                                                    }
+                                                }
+                                            }
                                         };
                                         debug!("shift_ORF_freq {}", shift_orf_freq);
                                         let variant_freq_record = match transcript.strand {
@@ -1533,32 +1679,48 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             PhasingStrand::Reverse => &record.freq / shift_orf_freq,
                                         };
                                         let variant_freq_prev_record = match transcript.strand {
-                                            PhasingStrand::Forward => &prev_record.freq / shift_orf_freq,
-                                            PhasingStrand::Reverse => &prev_record.freq / main_orf_freq,
+                                            PhasingStrand::Forward => {
+                                                &prev_record.freq / shift_orf_freq
+                                            }
+                                            PhasingStrand::Reverse => {
+                                                &prev_record.freq / main_orf_freq
+                                            }
                                         };
 
-                                        let freq_record = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                        let freq_record = match frameshift_frequencies
+                                            .get(&0)
+                                            .unwrap()
+                                            .0
+                                            == 0.0
+                                        {
                                             false => variant_freq_record * frameshift_freq,
                                             true => frameshift_freq,
                                         };
-                                        let freq_prev_record = match frameshift_frequencies.get(&0).unwrap().0 == 0.0 {
+                                        let freq_prev_record = match frameshift_frequencies
+                                            .get(&0)
+                                            .unwrap()
+                                            .0
+                                            == 0.0
+                                        {
                                             false => variant_freq_prev_record * frameshift_freq,
                                             true => frameshift_freq,
                                         };
 
                                         let out_freq = match freq_record == freq_prev_record {
                                             true => freq_record,
-                                            false => freq_record * freq_prev_record,  
+                                            false => freq_record * freq_prev_record,
                                         };
                                         debug!("Out frequency: {}", out_freq);
-                                        
+
                                         let out_shift = match shift_in_window {
                                             true => 0,
                                             false => frameshift,
                                         };
                                         debug!("Somatic frameshift: {}", somatic_shift);
                                         let mut splice_offset = 3 - out_shift;
-                                        if (transcript.strand == PhasingStrand::Reverse) && (exon_rest < 3) {
+                                        if (transcript.strand == PhasingStrand::Reverse)
+                                            && (exon_rest < 3)
+                                        {
                                             splice_offset += exon_rest;
                                         }
                                         debug!("MT_Seq len {}", new_mt_sequence.len() as u32);
@@ -1572,34 +1734,51 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             if transcript.strand == PhasingStrand::Forward {
                                                 // take complete first exon
                                                 splice_offset = 0;
-                                            }
-                                            else {
+                                            } else {
                                                 //take complete first exon
                                                 end_offset = 0;
                                             }
                                         }
                                         //mt_end_offset = new_mt_sequence.len() - end_offset;
                                         //wt_end_offset = new_wt_sequence.len() - end_offset;
-                                        while splice_offset + window_len <= (new_mt_sequence.len() - end_offset) as u64
+                                        while splice_offset + window_len
+                                            <= (new_mt_sequence.len() - end_offset) as u64
                                         {
                                             debug!("splice offset: {}", splice_offset);
-                                            debug!("splice offset + windowlen: {}", splice_offset + window_len);
+                                            debug!(
+                                                "splice offset + windowlen: {}",
+                                                splice_offset + window_len
+                                            );
                                             debug!("end offset: {}", end_offset);
                                             // check if wildtype sequence is shorter because of indels in on of the sequences
-                                            let mut out_wt_seq = match splice_offset + window_len <= new_wt_sequence.len() as u64 {
+                                            let mut out_wt_seq = match splice_offset + window_len
+                                                <= new_wt_sequence.len() as u64
+                                            {
                                                 true => match transcript.strand {
-                                                    PhasingStrand::Forward => &new_wt_sequence[splice_offset as usize
-                                                    ..(splice_offset + window_len) as usize],
-                                                    PhasingStrand::Reverse => &new_wt_sequence[(new_wt_sequence.len() - end_offset - window_len as usize)
-                                                    ..(new_wt_sequence.len() - end_offset)],
+                                                    PhasingStrand::Forward => {
+                                                        &new_wt_sequence[splice_offset as usize
+                                                            ..(splice_offset + window_len) as usize]
+                                                    }
+                                                    PhasingStrand::Reverse => {
+                                                        &new_wt_sequence[(new_wt_sequence.len()
+                                                            - end_offset
+                                                            - window_len as usize)
+                                                            ..(new_wt_sequence.len() - end_offset)]
+                                                    }
                                                 },
-                                                false => &[]
+                                                false => &[],
                                             };
                                             let out_mt_seq = match transcript.strand {
-                                                PhasingStrand::Forward => &new_mt_sequence[splice_offset as usize
-                                                ..(splice_offset + window_len) as usize],
-                                                PhasingStrand::Reverse => &new_mt_sequence[(new_mt_sequence.len() - end_offset - window_len as usize)
-                                                ..(new_mt_sequence.len() - end_offset)],
+                                                PhasingStrand::Forward => {
+                                                    &new_mt_sequence[splice_offset as usize
+                                                        ..(splice_offset + window_len) as usize]
+                                                }
+                                                PhasingStrand::Reverse => {
+                                                    &new_mt_sequence[(new_mt_sequence.len()
+                                                        - end_offset
+                                                        - window_len as usize)
+                                                        ..(new_mt_sequence.len() - end_offset)]
+                                                }
                                             };
                                             //&new_mt_sequence[splice_offset as usize
                                             //   ..(splice_offset + window_len) as usize];
@@ -1613,11 +1792,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                 String::from_utf8_lossy(&out_wt_seq)
                                             );
                                             //frameshifts
-                                            if out_shift > 0 && out_wt_seq == out_mt_seq && somatic_shift {
+                                            if out_shift > 0
+                                                && out_wt_seq == out_mt_seq
+                                                && somatic_shift
+                                            {
                                                 out_wt_seq = &[];
                                             }
                                             // non mutated sites
-                                            if out_wt_seq == out_mt_seq || (out_wt_seq.is_empty() && frameshift == 0){
+                                            if out_wt_seq == out_mt_seq
+                                                || (out_wt_seq.is_empty() && frameshift == 0)
+                                            {
                                                 debug!("equal");
                                                 match transcript.strand {
                                                     PhasingStrand::Forward => splice_offset += 3,
@@ -1639,7 +1823,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                     out_freq,
                                                     out_wt_seq.to_vec(),
                                                     out_mt_seq.to_vec(),
-                                                    window_len
+                                                    window_len,
                                                 ),
                                                 PhasingStrand::Reverse => record.update(
                                                     prev_record,
@@ -1648,7 +1832,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                                     out_freq,
                                                     out_wt_seq.to_vec(),
                                                     out_mt_seq.to_vec(),
-                                                    window_len
+                                                    window_len,
                                                 ),
                                             };
                                             debug!("splice_offset: {}", splice_offset);
@@ -1681,7 +1865,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             );
                                             match transcript.strand {
                                                 PhasingStrand::Forward => splice_offset += 3,
-                                                PhasingStrand::Reverse => end_offset +=3,
+                                                PhasingStrand::Reverse => end_offset += 3,
                                             };
                                         }
                                     }
@@ -1690,14 +1874,16 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         }
                         if is_short_exon && !is_last_exon {
                             prev_hap_vec = new_hap_vec;
-                        }
-                        else {
+                        } else {
                             for (_key, val) in output_map.iter() {
                                 let out_record = &val.1;
                                 let out_mt_seq = &val.0;
                                 let out_wt_seq = &val.2;
                                 debug!("Out-Record: {:?}", out_record);
-                                debug!("Out Sequence 2: {:?}", String::from_utf8_lossy(&out_mt_seq));
+                                debug!(
+                                    "Out Sequence 2: {:?}",
+                                    String::from_utf8_lossy(&out_mt_seq)
+                                );
                                 // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
                                 if !(out_mt_seq == out_wt_seq) {
                                     fasta_writer.write(
@@ -1719,7 +1905,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 prev_hap_vec = new_hap_vec;
                             }
                         }
-                        debug!("Prevhapvec {:?}", prev_hap_vec );
+                        debug!("Prevhapvec {:?}", prev_hap_vec);
                     }
                     old_offset = splice_side_offset;
                     old_end = splice_end;
@@ -1728,26 +1914,26 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         PhasingStrand::Forward => offset += 1,
                     }
                     debug!("New offset: {}", offset);
-                    // if all frames are closed, finish the transcript          
+                    // if all frames are closed, finish the transcript
                     if frameshifts.is_empty() {
                         break;
                     }
+                    if frameshifts.is_empty() {
+                        break;
+                    }
+                }
+                // if all frames are closed, finish the transcript
                 if frameshifts.is_empty() {
                     break;
                 }
-            }
-            // if all frames are closed, finish the transcript          
-            if frameshifts.is_empty() {
-                break;
-            }
-            if is_short_exon {
+                if is_short_exon {
+                    debug!("Exon Rest (End Of Loop): {}", exon_rest);
+                    break;
+                }
                 debug!("Exon Rest (End Of Loop): {}", exon_rest);
-                break;
-            }
-            debug!("Exon Rest (End Of Loop): {}", exon_rest);
             }
         }
-        // if all frames are closed, finish the transcript          
+        // if all frames are closed, finish the transcript
         if frameshifts.is_empty() {
             continue;
         }
@@ -1809,7 +1995,11 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .get("gene_name")
                         .expect("missing gene_name in GTF"),
                     record.seqname(),
-                    Interval::new(*record.start() as u64 - 1, *record.end() as u64, record.frame()),
+                    Interval::new(
+                        *record.start() as u64 - 1,
+                        *record.end() as u64,
+                        record.frame(),
+                    ),
                     record
                         .attributes()
                         .get("gene_biotype")
@@ -1850,7 +2040,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     .push(Interval::new(
                         *record.start() as u64 - 1,
                         *record.end() as u64,
-                        record.frame()
+                        record.frame(),
                     ));
             }
             "start_codon" => {
@@ -1883,7 +2073,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             "three_prime_utr" => {
                 debug!("3prime found");
                 if three_prime_found {
-                // register exon
+                    // register exon
                     gene.as_mut()
                         .expect("no gene record before exon in GTF")
                         .transcripts
@@ -1893,10 +2083,9 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                         .push(Interval::new(
                             *record.start() as u64 - 1,
                             *record.end() as u64,
-                            record.frame()
+                            record.frame(),
                         ));
-                }
-                else {
+                } else {
                     three_prime_found = true;
                     if record.strand() == Some(Strand::Forward) {
                         gene.as_mut()

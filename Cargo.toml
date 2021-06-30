@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bio = "0.34"
-rust-htslib = "0.26"
+rust-htslib = "0.36"
 bio-types = "0.11"
 clap = { version = "2.27", features = ["yaml", "color", "suggestions"]}
 itertools = "0.6"

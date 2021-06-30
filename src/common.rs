@@ -224,7 +224,7 @@ impl Transcript {
 pub struct Interval {
     pub start: u64,
     pub end: u64,
-    pub frame: u64
+    pub frame: u64,
 }
 
 impl Ord for Interval {
@@ -263,10 +263,10 @@ impl Interval {
             frame: match frame {
                 "." => 0 as u64,
                 _ => u64::from_str(frame).unwrap(),
-            }
+            },
         }
     }
-/*     pub fn update(&mut self, start: u32, end: u32, frame: &str) -> Result<(), Box<dyn Error>> {
+    /*     pub fn update(&mut self, start: u32, end: u32, frame: &str) -> Result<(), Box<dyn Error>> {
         self.start = start;
         self.end = end;
         self.frame = match frame {
@@ -278,7 +278,7 @@ impl Interval {
 }
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
-pub struct IDRecord{
+pub struct IDRecord {
     pub id: String,
     pub transcript: String,
     pub gene_id: String,
@@ -299,11 +299,20 @@ pub struct IDRecord{
     pub germline_positions: String,
     pub germline_aa_change: String,
     pub normal_sequence: String,
-    pub mutant_sequence: String
+    pub mutant_sequence: String,
 }
 
 impl IDRecord {
-    pub fn update(&self, rec: &IDRecord, offset: u64, frame: u64, freq: f64, wt_seq: Vec<u8>, mt_seq: Vec<u8>, wlen: u64) -> Self {
+    pub fn update(
+        &self,
+        rec: &IDRecord,
+        offset: u64,
+        frame: u64,
+        freq: f64,
+        wt_seq: Vec<u8>,
+        mt_seq: Vec<u8>,
+        wlen: u64,
+    ) -> Self {
         debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
@@ -419,7 +428,7 @@ impl IDRecord {
             vr = vr[1..].to_string();
         }
         if vr.ends_with("|") {
-            vr = vr[..vr.len() - 1 ].to_string();
+            vr = vr[..vr.len() - 1].to_string();
         }
         IDRecord {
             id: fasta_id,

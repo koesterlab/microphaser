@@ -24,10 +24,10 @@ use bio::io::{fasta, gff};
 use rust_htslib::{bam, bcf};
 
 pub mod common;
-pub mod microphasing_wholegenome;
-pub mod peptides;
 pub mod microphasing;
+pub mod microphasing_wholegenome;
 pub mod normal_microphasing;
+pub mod peptides;
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let yaml = load_yaml!("cli.yaml");
@@ -37,13 +37,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let build_yaml = load_yaml!("build_ref_cli.yaml");
     let wgs_yaml = load_yaml!("wgs.yaml");
     let matches = App::from_yaml(yaml)
-                    .version(env!("CARGO_PKG_VERSION"))
-                    .subcommand(SubCommand::from_yaml(somatic_yaml))
-                    .subcommand(SubCommand::from_yaml(germline_yaml))
-                    .subcommand(SubCommand::from_yaml(filter_yaml))
-                    .subcommand(SubCommand::from_yaml(build_yaml))
-                    .subcommand(SubCommand::from_yaml(wgs_yaml))
-                    .get_matches();
+        .version(env!("CARGO_PKG_VERSION"))
+        .subcommand(SubCommand::from_yaml(somatic_yaml))
+        .subcommand(SubCommand::from_yaml(germline_yaml))
+        .subcommand(SubCommand::from_yaml(filter_yaml))
+        .subcommand(SubCommand::from_yaml(build_yaml))
+        .subcommand(SubCommand::from_yaml(wgs_yaml))
+        .get_matches();
 
     match matches.subcommand() {
         ("somatic", Some(m)) => run_somatic(m),
@@ -51,7 +51,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         ("build_reference", Some(m)) => run_build(m),
         ("filter", Some(m)) => run_filtering(m),
         ("whole_genome", Some(m)) => run_wg(m),
-        _ => Ok(())
+        _ => Ok(()),
     }
 }
 
@@ -118,8 +118,8 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut fasta_writer = fasta::Writer::new(io::stdout());
 
     let mut tsv_writer = csv::WriterBuilder::new()
-    .delimiter(b'\t')
-    .from_path(matches.value_of("tsv").unwrap())?;
+        .delimiter(b'\t')
+        .from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u64)?;
     normal_microphasing::phase(
@@ -184,7 +184,8 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut removed_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(matches.value_of("similaroutput").unwrap())?;
-    let mut removed_fasta_writer = fasta::Writer::to_file(matches.value_of("filteredpeptides").unwrap())?;
+    let mut removed_fasta_writer =
+        fasta::Writer::to_file(matches.value_of("filteredpeptides").unwrap())?;
     let mut fasta_writer = fasta::Writer::new(io::stdout());
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normaloutput").unwrap())?;
 
@@ -202,18 +203,15 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     fern::Dispatch::new()
-                   .format(|out, message, _| out.finish(format_args!("{}", message)))
-                   .level(
-                       if matches.is_present("verbose") {
-                           log::LevelFilter::Debug
-                       } else {
-                           log::LevelFilter::Info
-                       }
-                   )
-                   .chain(std::io::stderr())
-                   .apply().unwrap();
-
-
+        .format(|out, message, _| out.finish(format_args!("{}", message)))
+        .level(if matches.is_present("verbose") {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Info
+        })
+        .chain(std::io::stderr())
+        .apply()
+        .unwrap();
 
     let bam_reader = bam::IndexedReader::from_path(matches.value_of("tumor-sample").unwrap())?;
 
@@ -227,12 +225,20 @@ pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let mut normal_writer = fasta::Writer::to_file(matches.value_of("normal").unwrap())?;
 
-    let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsv").unwrap())?;
+    let mut tsv_writer = csv::WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u64)?;
     microphasing_wholegenome::phase(
-        &mut fasta_reader, bcf_reader,
-        bam_reader, &mut fasta_writer, &mut tsv_writer, &mut normal_writer, window_len, only_relevant
+        &mut fasta_reader,
+        bcf_reader,
+        bam_reader,
+        &mut fasta_writer,
+        &mut tsv_writer,
+        &mut normal_writer,
+        window_len,
+        only_relevant,
     )
 }
 
