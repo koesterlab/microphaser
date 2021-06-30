@@ -32,7 +32,7 @@ pub fn switch_ascii_case(c: u8, r: u8) -> u8 {
     }
 }
 
-pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
+pub fn switch_ascii_case_vec(v: &[u8], r: u8) -> Vec<u8> {
     if r.is_ascii_uppercase() {
         v.to_ascii_lowercase()
     } else {
@@ -41,8 +41,8 @@ pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
 }
 
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
-    match variant {
-        &Variant::SNV { pos, alt, .. } => {
+    match *variant {
+        Variant::SNV { pos, alt, .. } => {
             let b = match read.cigar().read_pos(pos as u32, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
@@ -50,28 +50,24 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
             };
             Ok(b == alt)
         }
-        &Variant::Insertion { len, .. } => {
+        Variant::Insertion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                match c {
-                    &Cigar::Ins(_) => match c.len() == len as u32 {
-                        true => return Ok(true),
-                        false => (),
-                    },
-                    _ => (),
+                if let Cigar::Ins(_) = *c { match c.len() == len as u32 {
+                    true => return Ok(true),
+                    false => (),
+                }
                 }
             }
             Ok(false)
         }
-        &Variant::Deletion { len, .. } => {
+        Variant::Deletion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                match c {
-                    &Cigar::Del(_) => match c.len() == len as u32 {
-                        true => return Ok(true),
-                        false => (),
-                    },
-                    _ => (),
+                if let Cigar::Del(_) = *c { match c.len() == len as u32 {
+                    true => return Ok(true),
+                    false => (),
+                }
                 }
             }
             Ok(false)
@@ -139,10 +135,10 @@ impl IDRecord {
             nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(),
             variant_sites: self.variant_sites.to_owned() + &rec.variant_sites,
-            somatic_positions: somatic_positions,
-            somatic_aa_change: somatic_aa_change,
-            germline_positions: germline_positions,
-            germline_aa_change: germline_aa_change,
+            somatic_positions,
+            somatic_aa_change,
+            germline_positions,
+            germline_aa_change,
             peptide_sequence: String::from_utf8(seq).unwrap(),
         }
     }
@@ -222,6 +218,12 @@ pub struct ObservationMatrix {
     variants: VecDeque<Variant>,
 }
 
+impl Default for ObservationMatrix {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ObservationMatrix {
     pub fn new() -> Self {
         ObservationMatrix {
@@ -238,7 +240,7 @@ impl ObservationMatrix {
         debug!("drained!");
         let mask = 2u64.pow(self.ncols()) - 1;
         for obs in Itertools::flatten(self.observations.values_mut()) {
-            obs.haplotype = obs.haplotype & mask;
+            obs.haplotype &= mask;
         }
     }
 
@@ -310,7 +312,7 @@ impl ObservationMatrix {
         if end_pos >= interval_end && start_pos <= interval_start {
             // only insert if end_pos is larger than the interval end
             let mut obs = Observation {
-                read: read,
+                read,
                 haplotype: 0,
             };
             for (i, variant) in self.variants.iter().enumerate() {
@@ -323,7 +325,7 @@ impl ObservationMatrix {
             };
             self.observations
                 .entry(pos)
-                .or_insert_with(|| Vec::new())
+                .or_insert_with(Vec::new)
                 .push(obs);
         }
         Ok(())
@@ -428,9 +430,9 @@ impl ObservationMatrix {
                             if (j + 1) < variants.len() && i == variants[j + 1].pos() {
                                 j += 1;
                             }
-                            match variants[j] {
+                            match *variants[j] {
                                 // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
-                                &Variant::SNV { alt, .. } => {
+                                Variant::SNV { alt, .. } => {
                                     seq.push(switch_ascii_case(
                                         alt,
                                         refseq[(i - gene.start()) as usize],
@@ -438,7 +440,7 @@ impl ObservationMatrix {
                                     i += 1;
                                 }
                                 // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
-                                &Variant::Insertion { seq: ref s, .. } => {
+                                Variant::Insertion { seq: ref s, .. } => {
                                     seq.extend(
                                         switch_ascii_case_vec(
                                             s,
@@ -448,14 +450,9 @@ impl ObservationMatrix {
                                     );
                                     insertion = true;
                                     i += 1;
-                                    // if strand == "Forward" {
-                                    //     window_end -= (s.len() as u32) - 1;
-                                    // } else {
-                                    //     window_end -= s.len() as u32 - 1 + variants[j].frameshift();
-                                    // }
                                 }
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
-                                &Variant::Deletion { len, .. } => {
+                                Variant::Deletion { len, .. } => {
                                     seq.push(refseq[(i - gene.start()) as usize]);
                                     i += len + 1;
                                     window_end += len + 1;
@@ -471,11 +468,10 @@ impl ObservationMatrix {
                             }
                             // counting total number of variants
                             n_variants += 1;
-                            j += 1;
                         } else {
                             variant_profile.push(0);
-                            j += 1;
                         }
+                        j += 1;
                     }
                     // if no variant, just push the reference sequence
                     seq.push(refseq[(i - gene.start()) as usize]);
@@ -550,7 +546,7 @@ impl ObservationMatrix {
                         _ => {}
                     }
                     // check if variant position is already in the variant_site list
-                    if c == 0 || !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    if c == 0 || variants[c as usize].pos() != variants[(c - 1) as usize].pos() {
                         n_variantsites += 1;
                         variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {
@@ -574,10 +570,10 @@ impl ObservationMatrix {
                 gene_id: gene.id.to_owned(),
                 gene_name: gene.name.to_owned(),
                 chrom: gene.chrom.to_owned(),
-                offset: offset,
-                frame: frame,
-                freq: freq,
-                depth: depth,
+                offset,
+                frame,
+                freq,
+                depth,
                 nvar: n_variants,
                 nsomatic: n_somatic,
                 nvariant_sites: n_variantsites as u32,
@@ -611,10 +607,10 @@ impl ObservationMatrix {
                     gene_id: gene.id.to_owned(),
                     gene_name: gene.name.to_owned(),
                     chrom: gene.chrom.to_owned(),
-                    offset: offset,
-                    frame: frame,
-                    freq: freq,
-                    depth: depth,
+                    offset,
+                    frame,
+                    freq,
+                    depth,
                     nvar: n_variants,
                     nsomatic: n_somatic,
                     nvariant_sites: n_variantsites as u32,
@@ -634,12 +630,12 @@ impl ObservationMatrix {
             if !(is_short_exon) {
                 match splice_pos {
                     1 => fasta_writer.write(
-                        &format!("{}", record.id),
+                        &record.id.to_string(),
                         None,
                         &seq[splice_gap as usize..],
                     )?,
                     0 => fasta_writer.write(
-                        &format!("{}", record.id),
+                        &record.id.to_string(),
                         None,
                         &seq[..window_len as usize],
                     )?,
@@ -675,7 +671,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     debug!("Start Phasing");
     read_buffer.fetch(&gene.chrom.as_bytes(), gene.start(), gene.end())?;
 
-    let mut max_read_len = 0 as u64;
+    let mut max_read_len = 0;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
         if rec.seq().len() as u64 > max_read_len {
@@ -683,7 +679,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         }
         read_tree
             .entry(rec.pos() as u64)
-            .or_insert_with(|| Vec::new())
+            .or_insert_with(Vec::new)
             .push(rec.clone())
     }
     debug!("Reads Tree length: {}", read_tree.len());
@@ -712,20 +708,20 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         };
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
-        let mut exon_count = 0;
+        //let mut exon_count = 0;
         // Haplotypes from the end of the last exon
         let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
         // Possible variants that are still in the BTree after leaving the last exon (we do not drain variants if we leave an exon)
         let mut last_window_vars = 0;
-        for exon in &transcript.exons {
+        for (exon_count, exon) in transcript.exons.iter().enumerate() {
             // if all frames are closed, finish the transcript
             if frameshifts.is_empty() {
                 break;
             }
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
-            exon_count += 1;
+            //exon_count += 1;
             if exon.start > exon.end {
                 continue;
             }
@@ -1239,7 +1235,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 let out_record = &val.1;
                                 let out_seq = &val.0;
                                 fasta_writer.write(
-                                    &format!("{}", out_record.id),
+                                    &out_record.id.to_string(),
                                     None,
                                     &out_seq[..window_len as usize],
                                 )?;

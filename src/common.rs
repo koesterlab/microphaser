@@ -71,24 +71,24 @@ impl Variant {
         for a in &alleles[1..] {
             if a.len() == 1 && refallele.len() > 1 {
                 _alleles.push(Variant::Deletion {
-                    pos: pos,
+                    pos,
                     len: (refallele.len() - 1) as u64,
-                    is_germline: is_germline,
+                    is_germline,
                     prot_change: prot_change.to_owned(),
                 });
             } else if a.len() > 1 && refallele.len() == 1 {
                 _alleles.push(Variant::Insertion {
-                    pos: pos,
+                    pos,
                     seq: a[0..].to_owned(),
                     len: (a.len() - 1) as u64,
-                    is_germline: is_germline,
+                    is_germline,
                     prot_change: prot_change.to_owned(),
                 });
             } else if a.len() == 1 && refallele.len() == 1 {
                 _alleles.push(Variant::SNV {
-                    pos: pos,
+                    pos,
                     alt: a[0],
-                    is_germline: is_germline,
+                    is_germline,
                     prot_change: prot_change.to_owned(),
                 });
             } else {
@@ -104,48 +104,48 @@ impl Variant {
     }
 
     pub fn pos(&self) -> u64 {
-        match self {
-            &Variant::SNV { pos, .. } => pos,
-            &Variant::Deletion { pos, .. } => pos,
-            &Variant::Insertion { pos, .. } => pos,
+        match *self {
+            Variant::SNV { pos, .. } => pos,
+            Variant::Deletion { pos, .. } => pos,
+            Variant::Insertion { pos, .. } => pos,
         }
     }
 
     pub fn end_pos(&self) -> u64 {
-        match self {
-            &Variant::SNV { pos, .. } => pos,
-            &Variant::Deletion { pos, len, .. } => pos + len - 1,
-            &Variant::Insertion { pos, .. } => pos,
+        match *self {
+            Variant::SNV { pos, .. } => pos,
+            Variant::Deletion { pos, len, .. } => pos + len - 1,
+            Variant::Insertion { pos, .. } => pos,
         }
     }
 
     pub fn is_germline(&self) -> bool {
-        match self {
-            &Variant::SNV { is_germline, .. } => is_germline,
-            &Variant::Deletion { is_germline, .. } => is_germline,
-            &Variant::Insertion { is_germline, .. } => is_germline,
+        match *self {
+            Variant::SNV { is_germline, .. } => is_germline,
+            Variant::Deletion { is_germline, .. } => is_germline,
+            Variant::Insertion { is_germline, .. } => is_germline,
         }
     }
 
     pub fn prot_change(&self) -> String {
-        match self {
-            &Variant::SNV {
+        match *self {
+            Variant::SNV {
                 ref prot_change, ..
             } => prot_change.to_owned(),
-            &Variant::Deletion {
+            Variant::Deletion {
                 ref prot_change, ..
             } => prot_change.to_owned(),
-            &Variant::Insertion {
+            Variant::Insertion {
                 ref prot_change, ..
             } => prot_change.to_owned(),
         }
     }
 
     pub fn frameshift(&self) -> u64 {
-        match self {
-            &Variant::SNV { .. } => 0,
-            &Variant::Deletion { len, .. } => len % 3,
-            &Variant::Insertion { ref seq, .. } => (3 - ((seq.len() as u64 - 1) % 3)) % 3,
+        match *self {
+            Variant::SNV { .. } => 0,
+            Variant::Deletion { len, .. } => len % 3,
+            Variant::Insertion { ref seq, .. } => (3 - ((seq.len() as u64 - 1) % 3)) % 3,
         }
     }
 }
@@ -167,7 +167,7 @@ impl Gene {
             name: name.to_owned(),
             transcripts: Vec::new(),
             chrom: chrom.to_owned(),
-            interval: interval,
+            interval,
             biotype: biotype.to_owned(),
         }
     }
@@ -189,12 +189,11 @@ pub enum PhasingStrand {
 
 impl From<Strand> for PhasingStrand {
     fn from(strand: Strand) -> Self {
-        let s = match strand {
+        match strand {
             Strand::Forward => PhasingStrand::Forward,
             Strand::Reverse => PhasingStrand::Reverse,
             _ => panic!("Unsupported Strand orientation! Only Forward (+) and Reverse(-) allowed"),
-        };
-        s
+        }
     }
 }
 
@@ -210,13 +209,13 @@ impl Transcript {
     pub fn new(id: &str, biotype: &str, strand: PhasingStrand) -> Self {
         Transcript {
             id: id.to_owned(),
-            strand: strand,
+            strand,
             biotype: biotype.to_owned(),
             exons: Vec::new(),
         }
     }
     pub fn is_coding(&self) -> bool {
-        return !(self.exons.is_empty());
+        !(self.exons.is_empty())
     }
 }
 
@@ -258,10 +257,10 @@ impl Copy for Interval {}
 impl Interval {
     pub fn new(start: u64, end: u64, frame: &str) -> Self {
         Interval {
-            start: start,
-            end: end,
+            start,
+            end,
             frame: match frame {
-                "." => 0 as u64,
+                "." => 0_u64,
                 _ => u64::from_str(frame).unwrap(),
             },
         }
@@ -326,12 +325,12 @@ impl IDRecord {
         debug!("Splice offset: {}", offset);
         debug!("first_offset {} second_offset {}", self.offset, rec.offset);
 
-        let somatic_positions = self.somatic_positions.split("|");
-        let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split("|").collect();
-        let other_somatic_aa_change: Vec<&str> = rec.somatic_aa_change.split("|").collect();
-        let germline_positions = self.germline_positions.split("|");
-        let germline_aa_change: Vec<&str> = self.germline_aa_change.split("|").collect();
-        let other_germline_aa_change: Vec<&str> = rec.germline_aa_change.split("|").collect();
+        let somatic_positions = self.somatic_positions.split('|');
+        let somatic_aa_change: Vec<&str> = self.somatic_aa_change.split('|').collect();
+        let other_somatic_aa_change: Vec<&str> = rec.somatic_aa_change.split('|').collect();
+        let germline_positions = self.germline_positions.split('|');
+        let germline_aa_change: Vec<&str> = self.germline_aa_change.split('|').collect();
+        let other_germline_aa_change: Vec<&str> = rec.germline_aa_change.split('|').collect();
 
         let mut s_p_vec = Vec::new();
         let mut g_p_vec = Vec::new();
@@ -345,7 +344,7 @@ impl IDRecord {
         let window_len = wlen;
         for p in somatic_positions {
             debug!("{}", p);
-            if p == "" {
+            if p.is_empty() {
                 break;
             }
             let active_variant = match self.strand == "Forward" {
@@ -361,9 +360,9 @@ impl IDRecord {
             c += 1;
         }
         c = 0;
-        for p in rec.somatic_positions.split("|") {
+        for p in rec.somatic_positions.split('|') {
             debug!("{}", p);
-            if p == "" {
+            if p.is_empty() {
                 break;
             }
             let active_variant = match self.strand == "Forward" {
@@ -383,7 +382,7 @@ impl IDRecord {
         c = 0;
         for p in germline_positions {
             debug!("{}", p);
-            if p == "" {
+            if p.is_empty() {
                 break;
             }
             if self.offset + offset <= p.parse::<u64>().unwrap() {
@@ -394,8 +393,8 @@ impl IDRecord {
             c += 1;
         }
         c = 0;
-        for p in rec.germline_positions.split("|") {
-            if p == "" {
+        for p in rec.germline_positions.split('|') {
+            if p.is_empty() {
                 break;
             }
             if rec.offset >= p.parse::<u64>().unwrap() - offset {
@@ -424,10 +423,10 @@ impl IDRecord {
         debug!("nvars {} {}", self.nvar, rec.nvar);
 
         let mut vr = self.variant_sites.to_owned() + "|" + &rec.variant_sites;
-        if vr.starts_with("|") {
+        if vr.starts_with('|') {
             vr = vr[1..].to_string();
         }
-        if vr.ends_with("|") {
+        if vr.ends_with('|') {
             vr = vr[..vr.len() - 1].to_string();
         }
         IDRecord {
@@ -437,11 +436,11 @@ impl IDRecord {
             gene_name: self.gene_name.to_owned(),
             chrom: self.chrom.to_owned(),
             offset: new_offset,
-            frame: frame,
-            freq: freq,
+            frame,
+            freq,
             depth: new_depth,
             nvar: nvariants,
-            nsomatic: nsomatic,
+            nsomatic,
             nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
             nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(),

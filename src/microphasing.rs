@@ -31,7 +31,7 @@ pub fn switch_ascii_case(c: u8, r: u8) -> u8 {
     }
 }
 
-pub fn switch_ascii_case_vec(v: &Vec<u8>, r: u8) -> Vec<u8> {
+pub fn switch_ascii_case_vec(v: &[u8], r: u8) -> Vec<u8> {
     if r.is_ascii_uppercase() {
         v.to_ascii_lowercase()
     } else {
@@ -70,14 +70,14 @@ pub fn has_stop_codon(peptide: String, orientation: &str) -> bool {
                 }
                 c += 3;
             }
-            return false;
+            false
         }
     }
 }
 
 pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
-    match variant {
-        &Variant::SNV { pos, alt: _, .. } => {
+    match *variant {
+        Variant::SNV { pos, alt: _, .. } => {
             let quals = read.qual();
             let relative_pos = pos - read.pos() as u64;
             if relative_pos < quals.len() as u64 {
@@ -93,8 +93,8 @@ pub fn bad_quality(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dy
 }
 
 pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, Box<dyn Error>> {
-    match variant {
-        &Variant::SNV { pos, alt, .. } => {
+    match *variant {
+        Variant::SNV { pos, alt, .. } => {
             let quals = read.qual();
             let relative_pos = pos - read.pos() as u64;
             if relative_pos < quals.len() as u64 {
@@ -110,29 +110,25 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
             };
             Ok(b == alt)
         }
-        &Variant::Insertion { len, .. } => {
+        Variant::Insertion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             debug!("Variant length {}", len);
             for c in read.cigar().iter() {
-                match c {
-                    &Cigar::Ins(_) => match c.len() == len as u32 {
-                        true => return Ok(true),
-                        false => (),
-                    },
-                    _ => (),
+                if let Cigar::Ins(_) = *c { match c.len() == len as u32 {
+                    true => return Ok(true),
+                    false => (),
+                }
                 }
             }
             Ok(false)
         }
-        &Variant::Deletion { len, .. } => {
+        Variant::Deletion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                match c {
-                    &Cigar::Del(_) => match c.len() == len as u32 {
-                        true => return Ok(true),
-                        false => (),
-                    },
-                    _ => (),
+                if let Cigar::Del(_) = *c { match c.len() == len as u32 {
+                    true => return Ok(true),
+                    false => (),
+                }
                 }
             }
             Ok(false)
@@ -204,6 +200,13 @@ pub struct ObservationMatrix {
     variants: VecDeque<Variant>,
 }
 
+impl Default for ObservationMatrix {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+    
+
 impl ObservationMatrix {
     pub fn new() -> Self {
         ObservationMatrix {
@@ -220,7 +223,7 @@ impl ObservationMatrix {
         debug!("drained!");
         let mask = 2u64.pow(self.ncols()) - 1;
         for obs in Itertools::flatten(self.observations.values_mut()) {
-            obs.haplotype = obs.haplotype & mask;
+            obs.haplotype &= mask;
         }
     }
 
@@ -228,7 +231,7 @@ impl ObservationMatrix {
     pub fn extend_right(
         &mut self,
         new_variants: Vec<Variant>,
-        start_loss: &Vec<u64>,
+        start_loss: &[u64],
     ) -> Result<(), Box<dyn Error>> {
         let k = new_variants.len();
         debug!("Extend variants!");
@@ -296,7 +299,7 @@ impl ObservationMatrix {
         interval_end: u64,
         interval_start: u64,
         reverse: bool,
-        start_loss: &Vec<u64>,
+        start_loss: &[u64],
     ) -> Result<(), Box<dyn Error>> {
         let end_pos = read.cigar().end_pos() as u64;
         let start_pos = read.pos() as u64;
@@ -311,7 +314,7 @@ impl ObservationMatrix {
         {
             // only insert if end_pos is larger than the interval end
             let mut obs = Observation {
-                read: read,
+                read,
                 haplotype: 0,
                 frame: (0, 0),
                 bad_qual: false,
@@ -332,7 +335,7 @@ impl ObservationMatrix {
 
             self.observations
                 .entry(pos)
-                .or_insert_with(|| Vec::new())
+                .or_insert_with(Vec::new)
                 .push(obs);
         }
         Ok(())
@@ -446,7 +449,7 @@ impl ObservationMatrix {
             germline_seq.clear();
             let mut n_somatic = 0;
             let mut n_variants = 0;
-            let freq = match *count == 0 as usize {
+            let freq = match *count == 0 {
                 true => 0.0,
                 false => *count as f64 / frame_depth as f64,
             };
@@ -496,9 +499,9 @@ impl ObservationMatrix {
                                 frameshift_frequencies.insert(0, (1.0 - freq, false));
                                 debug!("Frameshift frequencies {:?}", frameshift_frequencies);
                             }
-                            match variants[j] {
+                            match *variants[j] {
                                 // if SNV, we push the alternative base instead of the normal one, and change the case of the letter for visualisation
-                                &Variant::SNV { alt, .. } => {
+                                Variant::SNV { alt, .. } => {
                                     debug!("Variant: SNV");
                                     match variants[j].is_germline() {
                                         true => germline_seq.push(switch_ascii_case(
@@ -516,7 +519,7 @@ impl ObservationMatrix {
                                     i += 1;
                                 }
                                 // if insertion, we insert the new bases (with changed case) and decrease the window-end, since we added bases and made the sequence longer
-                                &Variant::Insertion { seq: ref s, .. } => {
+                                Variant::Insertion { seq: ref s, .. } => {
                                     debug!("Variant: INS");
                                     debug!("Insertion length: {}", s.len());
                                     match variants[j].is_germline() {
@@ -540,7 +543,7 @@ impl ObservationMatrix {
                                     i += 1;
                                 }
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
-                                &Variant::Deletion { len, .. } => {
+                                Variant::Deletion { len, .. } => {
                                     debug!("Variant: DEL");
                                     if strand == "Reverse" && variants[j].end_pos() >= window_end {
                                         debug!("Variant not complete in window");
@@ -582,12 +585,10 @@ impl ObservationMatrix {
                             }
                             // counting total number of variants
                             n_variants += 1;
-
-                            j += 1;
                         } else {
                             variant_profile.push(0);
-                            j += 1;
                         }
+                        j += 1;
                     }
                     // if no variant, just push the reference sequence
                     if i < window_end {
@@ -608,21 +609,19 @@ impl ObservationMatrix {
             debug!("frame: {}", frame);
             debug!("frame_frequency: {}", frame_frequency);
             debug!("Frameshift frequencies {:?}", frameshift_frequencies);
-            if !(frameshift_frequencies.contains_key(&frame)) {
-                frameshift_frequencies.insert(frame, (0.0, false));
-            }
-            if !(shift_in_window > 0) {
+            frameshift_frequencies.entry(frame).or_insert((0.0, false));
+            if shift_in_window == 0 {
                 frame_frequency = freq * frameshift_frequencies.get(&frame).unwrap().0;
             }
             debug!("frame_frequency: {}", frame_frequency);
             // check if the haplotype is already connected to a frameshift (i.e. with a frameshift on all reads supporting the haplotype)
             // if the current frame does not match this frameshift, set the frequency to 0
-            if !(shift_in_window > 0) && haplotype_frame > 0 && frame == 0 {
+            if shift_in_window == 0 && haplotype_frame > 0 && frame == 0 {
                 frame_frequency = 0.0;
             }
             // for indels, do not use the corresponding normal, but search for one with small hamming distance
             if (indel && insertion)
-                || (!(shift_in_window > 0)
+                || (shift_in_window == 0
                     && (frameshift_frequencies.get(&frame).unwrap().1
                         || (has_frameshift && germline_seq != seq)))
             {
@@ -748,18 +747,12 @@ impl ObservationMatrix {
                     }
                 }
                 // check if variant position is already in the variant_site list
-                if c == 0 || !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                if c == 0 || variants[c as usize].pos() != variants[(c - 1) as usize].pos() {
                     n_variantsites += 1;
                     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                     if !(variants[c as usize].is_germline()) {
                         n_som_variantsites += 1;
                     }
-                    // } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
-                    //     n_variantsites += 1;
-                    //     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
-                    //     if !(variants[c as usize].is_germline()) {
-                    //         n_som_variantsites += 1;
-                    //     }
                 }
                 c += 1
             }
@@ -782,9 +775,9 @@ impl ObservationMatrix {
                 gene_name: gene.name.to_owned(),
                 chrom: gene.chrom.to_owned(),
                 offset: inframe_offset,
-                frame: frame,
+                frame,
                 freq: frame_frequency,
-                depth: depth,
+                depth,
                 nvar: n_variants,
                 nsomatic: n_somatic,
                 nvariant_sites: n_variantsites as u32,
@@ -819,10 +812,10 @@ impl ObservationMatrix {
                     gene_name: gene.name.to_owned(),
                     chrom: gene.chrom.to_owned(),
                     offset: inframe_offset,
-                    frame: frame,
+                    frame,
                     freq: frame_frequency,
                     nvar: n_variants,
-                    depth: depth,
+                    depth,
                     nsomatic: n_somatic,
                     nvariant_sites: n_variantsites as u32,
                     nsomvariant_sites: n_som_variantsites as u32,
@@ -844,33 +837,33 @@ impl ObservationMatrix {
             // write neopeptides, information and matching normal peptide to files
             if (record.nsomatic > 0 || has_frameshift)
                 && !(is_short_exon)
-                && !(germline_seq == seq)
+                && germline_seq != seq
                 && record.freq > 0.0
                 && (!(stop_gain) || has_frameshift)
             {
                 debug!("Output at offset {}", offset);
                 match splice_pos {
                     1 => fasta_writer.write(
-                        &format!("{}", record.id),
+                        &record.id.to_string(),
                         None,
                         &seq[splice_gap as usize..],
                     )?,
                     0 => fasta_writer.write(
-                        &format!("{}", record.id),
+                        &record.id.to_string(),
                         None,
                         &seq[..this_window_len as usize],
                     )?,
                     _ => {}
                 };
-                if germline_seq.len() > 0 {
+                if !germline_seq.is_empty() {
                     match splice_pos {
                         1 => normal_writer.write(
-                            &format!("{}", record.id),
+                            &record.id.to_string(),
                             None,
                             &germline_seq[splice_gap as usize..],
                         )?,
                         0 => normal_writer.write(
-                            &format!("{}", record.id),
+                            &record.id.to_string(),
                             None,
                             &germline_seq[..this_window_len as usize],
                         )?,
@@ -909,7 +902,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     debug!("Start Phasing");
     read_buffer.fetch(&gene.chrom.as_bytes(), gene.start(), gene.end())?;
 
-    let mut max_read_len = 0 as u64;
+    let mut max_read_len = 0;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
         if rec.mapq() < 5 {
@@ -920,7 +913,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         }
         read_tree
             .entry(rec.pos() as u64)
-            .or_insert_with(|| Vec::new())
+            .or_insert_with(Vec::new)
             .push(rec.clone())
     }
 
@@ -1318,14 +1311,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             start_loss.push(variant.pos());
                         }
 
-                        match variant {
-                            Variant::Deletion { .. } => {
-                                match transcript.strand {
-                                    PhasingStrand::Forward => deletions.push(variant.end_pos()),
-                                    PhasingStrand::Reverse => deletions.push(variant.pos()),
-                                };
-                            }
-                            _ => (),
+                        if let Variant::Deletion { .. } = variant {
+                            match transcript.strand {
+                                PhasingStrand::Forward => deletions.push(variant.end_pos()),
+                                PhasingStrand::Reverse => deletions.push(variant.pos()),
+                            };
                         }
                         let s = variant.frameshift();
                         debug!("Frameshift from Variant: {}", s);
@@ -1456,10 +1446,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 hap_vec = haplotype_results.0;
                             }
                             debug!("hap_vec: {:?}", hap_vec);
-                            if frameshift != 0 && frameshift_frequencies.contains_key(&frameshift) {
-                                if frameshift_frequencies.get(&frameshift).unwrap().0 == 0.0 {
-                                    stopped_frameshift = key;
-                                }
+                            if frameshift != 0 && frameshift_frequencies.contains_key(&frameshift) && frameshift_frequencies.get(&frameshift).unwrap().0 == 0.0 {
+                                stopped_frameshift = key;
                             }
                         }
                     }
@@ -1476,10 +1464,8 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("frameshifts: {:?}", frameshifts);
                     debug!("Key to remove: {}", stopped_frameshift);
                     // remove frameshift which reached stop codon
-                    if stopped_frameshift != 3 {
-                        if *(frameshifts.get(&stopped_frameshift).unwrap()) != 0 {
-                            frameshifts.remove(&stopped_frameshift);
-                        }
+                    if stopped_frameshift != 3 && *(frameshifts.get(&stopped_frameshift).unwrap()) != 0 {
+                        frameshifts.remove(&stopped_frameshift);
                     }
                     if frameshifts.is_empty() {
                         break;
@@ -1634,9 +1620,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     for (&pos, &frameshift) in &mut active_frameshifts {
                                         // possible shift if exon starts with the rest of a split codon (splicing)
                                         debug!("Frameshift: {}", frameshift);
-                                        if !frameshift_frequencies.contains_key(&frameshift) {
-                                            frameshift_frequencies.insert(frameshift, (0.0, false));
-                                        }
+                                        frameshift_frequencies.entry(frameshift).or_insert((0.0, false));
 
                                         let shift_in_window = match transcript.strand {
                                             PhasingStrand::Forward => pos >= prev_record.offset,
@@ -1674,15 +1658,15 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         };
                                         debug!("shift_ORF_freq {}", shift_orf_freq);
                                         let variant_freq_record = match transcript.strand {
-                                            PhasingStrand::Forward => &record.freq / main_orf_freq,
-                                            PhasingStrand::Reverse => &record.freq / shift_orf_freq,
+                                            PhasingStrand::Forward => record.freq / main_orf_freq,
+                                            PhasingStrand::Reverse => record.freq / shift_orf_freq,
                                         };
                                         let variant_freq_prev_record = match transcript.strand {
                                             PhasingStrand::Forward => {
-                                                &prev_record.freq / shift_orf_freq
+                                                prev_record.freq / shift_orf_freq
                                             }
                                             PhasingStrand::Reverse => {
-                                                &prev_record.freq / main_orf_freq
+                                                prev_record.freq / main_orf_freq
                                             }
                                         };
 
@@ -1886,15 +1870,15 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     String::from_utf8_lossy(&out_mt_seq)
                                 );
                                 // filter relevant haplotypes : variant haplotypes and their wildtype counterparts
-                                if !(out_mt_seq == out_wt_seq) {
+                                if out_mt_seq != out_wt_seq {
                                     fasta_writer.write(
-                                        &format!("{}", out_record.id),
+                                        &out_record.id.to_string(),
                                         None,
                                         &out_mt_seq[..window_len as usize],
                                     )?;
                                     if out_wt_seq != &[] {
                                         normal_writer.write(
-                                            &format!("{}", out_record.id),
+                                            &out_record.id.to_string(),
                                             None,
                                             &out_wt_seq[..window_len as usize],
                                         )?;

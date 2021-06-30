@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+
 #[macro_use]
 extern crate log;
 extern crate env_logger;

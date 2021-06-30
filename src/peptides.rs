@@ -87,7 +87,7 @@ fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
     // reverse complement the sequence if the transcript is in reverse orientation
     if frame < 0 {
         r = dna::revcomp(&case_seq.to_vec());
-        frame = frame * (-1)
+        frame = -frame;
     }
     let mut p = vec![];
     let mut i = frame as usize - 1;
@@ -114,7 +114,7 @@ pub fn build<F: io::Read>(
         let id = record.id();
         let seq = record.seq();
         // check if peptide is in forward or reverse orientation
-        let frame = match id.ends_with("F") {
+        let frame = match id.ends_with('F') {
             true => 1,
             false => -1,
         };
@@ -124,7 +124,7 @@ pub fn build<F: io::Read>(
         let mut i = 0;
         while i + base_length <= seq.len() {
             let pepseq = to_protein(&seq[i..(i + base_length)], frame).unwrap();
-            fasta_writer.write(&format!("{}", id), None, &pepseq)?;
+            fasta_writer.write(&id.to_string(), None, &pepseq)?;
             ref_set.insert(pepseq);
             i += 3;
         }
@@ -141,7 +141,7 @@ pub fn build<F: io::Read>(
     Ok(())
 }
 
-pub fn compute_ml(alt_depths: &Vec<f64>, depth: &Vec<u32>) -> Result<f64, Box<dyn Error>> {
+pub fn compute_ml(alt_depths: &[f64], depth: &[u32]) -> Result<f64, Box<dyn Error>> {
     let mut ad: f64 = 0.0;
     for d in alt_depths {
         debug!("Alt depth: {}", d);
@@ -188,21 +188,21 @@ pub fn filter<F: io::Read, O: io::Write>(
             // no somatic variant in peptide, but still a neopeptide
             // -> downstream of frameshift, keep complete sequence
             true => 0,
-            false => match somatic_positions.contains("|") {
+            false => match somatic_positions.contains('|') {
                 true => 0,
                 false => somatic_positions.parse::<usize>().unwrap(),
             },
         };
-        let orientation = *&row.strand.as_str();
-        let offset = *&row.offset as usize;
+        let orientation = row.strand.as_str();
+        let offset = row.offset as usize;
         let mt_seq = &row.mutant_sequence.as_bytes();
         let wt_seq = &row.normal_sequence.as_bytes();
-        let frame = match id.ends_with("F") {
+        let frame = match id.ends_with('F') {
             true => 1,
             false => -1,
         };
         let neopeptide = to_protein(mt_seq, frame).unwrap();
-        let wt_peptide = match wt_seq.len() == 0 {
+        let wt_peptide = match wt_seq.is_empty() {
             true => vec![],
             false => to_protein(wt_seq, frame).unwrap(),
         };
@@ -246,7 +246,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 &String::from_utf8_lossy(w_peptide)
             );
             // skip smaller peptides not containing a somatic variant
-            if w_peptide.len() == 0 && som_pos > 0 {
+            if w_peptide.is_empty() && som_pos > 0 {
                 match orientation {
                     "Forward" => {
                         if ((i + peptide_length) * 3) + offset <= som_pos {
@@ -338,7 +338,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                         match ref_set.contains(n_peptide) {
                             true => {
                                 removed_fasta_writer.write(
-                                    &format!("{}", out_row.id),
+                                    &out_row.id.to_string(),
                                     None,
                                     &n_peptide,
                                 )?;
@@ -349,11 +349,11 @@ pub fn filter<F: io::Read, O: io::Write>(
                                 );
                             }
                             false => {
-                                fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                                fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
                                 //if we don't have a matching normal, do not write an empty entry to the output
-                                if w_peptide.len() > 0 {
+                                if w_peptide.is_empty() {
                                     normal_writer.write(
-                                        &format!("{}", out_row.id),
+                                        &out_row.id.to_string(),
                                         None,
                                         &w_peptide,
                                     )?;
@@ -388,15 +388,15 @@ pub fn filter<F: io::Read, O: io::Write>(
                 //if current_depth > 0 {
                 depth
                     .entry((frameshift, vars.to_string(), germline_vars.to_string()))
-                    .or_insert(vec![current_depth])
+                    .or_insert_with(|| vec![current_depth])
                     .push(current_depth);
                 frequencies
                     .entry((frameshift, vars.to_string(), germline_vars.to_string()))
-                    .or_insert(vec![current_freq * current_depth as f64])
+                    .or_insert_with(|| vec![current_freq * current_depth as f64])
                     .push(current_freq * current_depth as f64);
                 records
                     .entry((frameshift, vars.to_string(), germline_vars.to_string()))
-                    .or_insert(vec![value_tuple.clone()])
+                    .or_insert_with(|| vec![value_tuple.clone()])
                     .push(value_tuple);
                 //}
                 //records.push((row2, String::from_utf8_lossy(n_peptide).to_string(), String::from_utf8_lossy(w_peptide).to_string()));
@@ -434,7 +434,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
                 true => {
-                    removed_fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                    removed_fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
                     removed_writer.serialize(out_row)?;
                     debug!(
                         "Removed Peptide due to germline similar: {}",
@@ -442,10 +442,10 @@ pub fn filter<F: io::Read, O: io::Write>(
                     );
                 }
                 false => {
-                    fasta_writer.write(&format!("{}", out_row.id), None, &n_peptide)?;
+                    fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
                     //if we don't have a matching normal, do not write an empty entry to the output
-                    if w_peptide.len() > 0 {
-                        normal_writer.write(&format!("{}", out_row.id), None, &w_peptide)?;
+                    if !w_peptide.is_empty() {
+                        normal_writer.write(&out_row.id.to_string(), None, &w_peptide)?;
                     }
                     tsv_writer.serialize(out_row)?;
                 }
