@@ -3,6 +3,7 @@ use std::collections::{VecDeque, BTreeMap};
 use std::io;
 use std::fs;
 use std::cmp;
+use std::rc::Rc;
 
 use csv;
 use sha1;
@@ -45,7 +46,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 //            debug!("Read pos: {}", read.pos());
 //            debug!("Read end: {}", read.seq().len() + (read.pos() as usize));
 //            debug!("Read to check support: {}", String::from_utf8_lossy(read.qname()));
-            let b = match read.cigar().read_pos(pos, false, false) {
+            let b = match read.cigar().read_pos(pos as u32, false, false) {
                 Ok(None) => return Ok(false),
                 Ok(Some(p)) => read.seq()[p as usize],
                 _ => return Ok(false)
@@ -79,7 +80,7 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
 pub struct IDRecord{
     id: String,
     chrom: String,
-    offset: u32,
+    offset: u64,
     freq: f64,
     depth: u32,
     nvar: u32,
@@ -112,7 +113,7 @@ pub struct HaplotypeSeq {
 
 #[derive(Debug)]
 pub struct Observation{
-    read: bam::Record,
+    read: Rc<bam::Record>,
     haplotype: u64
 }
 
@@ -120,7 +121,7 @@ pub struct Observation{
 impl Observation {
     pub fn update_haplotype(&mut self, i: usize, variant: &Variant) -> Result<(), Box<dyn Error>> {
         debug!("Read pos {} ; variant pos {}", self.read.pos() as u32, variant.pos());
-        if (self.read.pos() as u32) > variant.pos() {
+        if (self.read.pos() as u64) > variant.pos() {
             panic!("bug: read starts right of variant");
         }
         if supports_variant(&self.read, &variant)? {
@@ -138,7 +139,7 @@ impl Observation {
 
 
 pub struct ObservationMatrix {
-    observations: BTreeMap<u32, Vec<Observation>>,
+    observations: BTreeMap<u64, Vec<Observation>>,
     variants: VecDeque<Variant>
 }
 
@@ -187,7 +188,7 @@ impl ObservationMatrix {
     }
 
     /// Remove all reads that do not enclose interval end.
-    pub fn cleanup_reads(&mut self, interval_end: u32) {
+    pub fn cleanup_reads(&mut self, interval_end: u64) {
         debug!("Number of reads(before removal): {}", self.observations.len());
         let observations = self.observations.split_off(&interval_end);
         self.observations = observations;//self.observations.split_off(&interval_end);
@@ -196,7 +197,7 @@ impl ObservationMatrix {
 
     /// Check if read has already been added to observations - deprecated
     pub fn contains(&mut self, read: &bam::Record) -> Result<bool, Box<dyn Error>> {
-        let end_pos = read.cigar().end_pos() as u32;
+        let end_pos = read.cigar().end_pos() as u64;
         let qname = read.qname();
         if self.observations.contains_key(&end_pos) {
             for obs in self.observations.get(&end_pos).unwrap() {
@@ -210,9 +211,9 @@ impl ObservationMatrix {
     }
 
     /// Add read, while considering given interval end. TODO: Think about reads that are not overlapping variant
-    pub fn push_read(&mut self, read: bam::Record, interval_end:u32, interval_start:u32) -> Result<(), Box<dyn Error>> {
-        let end_pos = read.cigar().end_pos() as u32;
-        let start_pos = read.pos() as u32;
+    pub fn push_read(&mut self, read: Rc<bam::Record>, interval_end:u64, interval_start:u64) -> Result<(), Box<dyn Error>> {
+        let end_pos = read.cigar().end_pos() as u64;
+        let start_pos = read.pos() as u64;
         debug!("Read Start: {}, Read End: {} - Window Start: {}, Window End {}", start_pos, end_pos, interval_start, interval_end);
         if end_pos >= interval_end && start_pos <= interval_start {
             // only insert if end_pos is larger than the interval end
@@ -238,8 +239,8 @@ impl ObservationMatrix {
     pub fn print_haplotypes<O: io::Write> (
         &self,
         chrom: &String,
-        offset: u32,
-        window_len: u32,
+        offset: u64,
+        window_len: u64,
         refseq: &[u8],
         fasta_writer: &mut fasta::Writer<O>,
         tsv_writer: &mut csv::Writer<fs::File>,
@@ -313,7 +314,7 @@ impl ObservationMatrix {
                                     }
                                     seq.extend(switch_ascii_case_vec(s, refseq[i as usize]).into_iter());
                                     i += 1;
-                                    window_end -= (s.len() as u32) -1;
+                                    window_end -= (s.len() as u64) -1;
                                 },
                                 // if deletion, we push the remaining base and increase the index to jump over the deleted bases. Then, we increase the window-end since we lost bases and need to fill up to 27.
                                 &Variant::Deletion { len, .. } => {
@@ -452,7 +453,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     tsv_writer: &mut csv::Writer<fs::File>,
     normal_writer: &mut fasta::Writer<fs::File>,
-    window_len: u32,
+    window_len: u64,
     refseq: &mut Vec<u8>,
     only_relevant: bool
 ) -> Result<(), Box<dyn Error>> {
@@ -463,30 +464,30 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         let mut variant_tree = BTreeMap::new();
         let mut read_tree = BTreeMap::new();
         debug!("Start Phasing");
-        read_buffer.fetch(&sequence.name.as_bytes(), chunk as u32, chunk as u32 + 1000000)?;
+        read_buffer.fetch(&sequence.name.as_bytes(), chunk, chunk + 1000000)?;
         let chrom = &sequence.name;
-        let mut max_read_len = 50 as u32;
+        let mut max_read_len = 50 as u64;
         // load read buffer into BTree
         for rec in read_buffer.iter() {
-            if rec.seq().len() as u32 > max_read_len {
-            max_read_len = rec.seq().len() as u32;}
-            read_tree.entry(rec.pos() as u32).or_insert_with(|| Vec::new()).push(rec.clone())
+            if rec.seq().len() as u64 > max_read_len {
+            max_read_len = rec.seq().len() as u64;}
+            read_tree.entry(rec.pos() as u64).or_insert_with(|| Vec::new()).push(rec.clone())
         }
         debug!("Reads Tree length: {}", read_tree.len());
 
         // load variant buffer into BTree
-        let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), chunk as u32, chunk as u32 + 1000000)?;
-        let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos(), Variant::new(rec).unwrap())).collect_vec();
+        let (_addedvars, _deletedvars) = variant_buffer.fetch(&sequence.name.as_bytes(), chunk, chunk + 1000000)?;
+        let _vars = variant_buffer.iter_mut().map(|rec| variant_tree.insert(rec.pos() as u64, Variant::new(rec).unwrap())).collect_vec();
 
 
 
         let mut observations = ObservationMatrix::new();
         let mut frameshifts = BTreeMap::new();
         frameshifts.insert(0, 0);
-        let mut offset = chunk as u32;
+        let mut offset = chunk;
         let mut old_offset = offset;
         loop {
-            let valid = offset + window_len <= chunk  as u32 + 1000000;
+            let valid = offset + window_len <= chunk + 1000000;
             if !valid {
                 break;
             }
@@ -707,7 +708,7 @@ pub fn phase<F: io::Read + io::Seek, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     tsv_writer: &mut csv::Writer<fs::File>,
     normal_writer: &mut fasta::Writer<fs::File>,
-    window_len: u32,
+    window_len: u64,
     only_relevant: bool
 ) -> Result<(), Box<dyn Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);

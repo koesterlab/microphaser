@@ -228,6 +228,7 @@ fn test_forward_germline() {
     let reference = download_reference("chr14");
     microphaser_normal(&format!("tests/resources/test_forward/forward_test.bam \
         --variants tests/resources/test_forward/forward_test.germline.vcf \
+        --tsv tests/output/forward_test.germline-origins.tsv \
         --ref {} > tests/output/forward_test.germline.fa < tests/resources/test_forward/forward_test.gtf", reference));
     test_output(
         "tests/output/forward_test.germline.fa",
@@ -263,6 +264,7 @@ fn splice_test_forward_germline() {
     let reference = download_reference("chr7");
     microphaser_normal(&format!("tests/resources/splice_forward_test/INSIG1.test.bam \
         --variants tests/resources/splice_forward_test/INSIG1.test.germline.vcf \
+        --tsv tests/output/splice_forward_test.germline-origins.tsv \
         --ref {} > tests/output/splice_forward_test.germline.fa < tests/resources/splice_forward_test/INSIG1.test.gtf", reference));
     test_output(
         "tests/output/splice_forward_test.germline.fa",

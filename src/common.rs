@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::ops::Deref;
 
 use bio_types::strand::Strand;
 
@@ -17,10 +18,10 @@ pub struct Annotation {
 
 impl Annotation {
     pub fn new(rec: &mut bcf::Record) -> Self {
-        //let info = str::from_utf8(rec.info(b"ANN").string().unwrap().unwrap_or(Vec::new())[0]).unwrap_or("");
+        //let info = String::from_utf8(rec.info(b"ANN").string().unwrap().unwrap().deref());
         let info = match rec.info(b"ANN").string() {
             Err(_e) => "",
-            Ok(v) => str::from_utf8(v.unwrap_or(Vec::new())[0]).unwrap(),
+            Ok(v) => str::from_utf8((v.unwrap().deref())[0]).unwrap(),
         };
         let pc = match info {
             "" => "".to_string(),
@@ -36,21 +37,21 @@ impl Annotation {
 #[derive(Debug, Clone)]
 pub enum Variant {
     SNV {
-        pos: u32,
+        pos: u64,
         alt: u8,
         is_germline: bool,
         prot_change: String,
     },
     Insertion {
-        pos: u32,
+        pos: u64,
         seq: Vec<u8>,
-        len: u32,
+        len: u64,
         is_germline: bool,
         prot_change: String,
     },
     Deletion {
-        pos: u32,
-        len: u32,
+        pos: u64,
+        len: u64,
         is_germline: bool,
         prot_change: String,
     },
@@ -63,7 +64,7 @@ impl Variant {
         let ann = Annotation::new(rec);
 
         let prot_change = ann.prot_change.as_str();
-        let pos = rec.pos();
+        let pos = rec.pos() as u64;
         let alleles = rec.alleles();
         let refallele = alleles[0];
         let mut _alleles = Vec::with_capacity(alleles.len() - 1);
@@ -71,7 +72,7 @@ impl Variant {
             if a.len() == 1 && refallele.len() > 1 {
                 _alleles.push(Variant::Deletion {
                     pos: pos,
-                    len: (refallele.len() - 1) as u32,
+                    len: (refallele.len() - 1) as u64,
                     is_germline: is_germline,
                     prot_change: prot_change.to_owned(),
                 });
@@ -79,7 +80,7 @@ impl Variant {
                 _alleles.push(Variant::Insertion {
                     pos: pos,
                     seq: a[0..].to_owned(),
-                    len: (a.len() - 1) as u32,
+                    len: (a.len() - 1) as u64,
                     is_germline: is_germline,
                     prot_change: prot_change.to_owned(),
                 });
@@ -102,7 +103,7 @@ impl Variant {
         Ok(_alleles)
     }
 
-    pub fn pos(&self) -> u32 {
+    pub fn pos(&self) -> u64 {
         match self {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, .. } => pos,
@@ -110,7 +111,7 @@ impl Variant {
         }
     }
 
-    pub fn end_pos(&self) -> u32 {
+    pub fn end_pos(&self) -> u64 {
         match self {
             &Variant::SNV { pos, .. } => pos,
             &Variant::Deletion { pos, len, .. } => pos + len - 1,
@@ -140,11 +141,11 @@ impl Variant {
         }
     }
 
-    pub fn frameshift(&self) -> u32 {
+    pub fn frameshift(&self) -> u64 {
         match self {
             &Variant::SNV { .. } => 0,
             &Variant::Deletion { len, .. } => len % 3,
-            &Variant::Insertion { ref seq, .. } => (3 - ((seq.len() as u32 - 1) % 3)) % 3,
+            &Variant::Insertion { ref seq, .. } => (3 - ((seq.len() as u64 - 1) % 3)) % 3,
         }
     }
 }
@@ -171,11 +172,11 @@ impl Gene {
         }
     }
 
-    pub fn start(&self) -> u32 {
+    pub fn start(&self) -> u64 {
         self.interval.start
     }
 
-    pub fn end(&self) -> u32 {
+    pub fn end(&self) -> u64 {
         self.interval.end
     }
 }
@@ -221,9 +222,9 @@ impl Transcript {
 
 #[derive(Debug)]
 pub struct Interval {
-    pub start: u32,
-    pub end: u32,
-    pub frame: u32
+    pub start: u64,
+    pub end: u64,
+    pub frame: u64
 }
 
 impl Ord for Interval {
@@ -255,13 +256,13 @@ impl Clone for Interval {
 impl Copy for Interval {}
 
 impl Interval {
-    pub fn new(start: u32, end: u32, frame: &str) -> Self {
+    pub fn new(start: u64, end: u64, frame: &str) -> Self {
         Interval {
             start: start,
             end: end,
             frame: match frame {
-                "." => 0 as u32,
-                _ => u32::from_str(frame).unwrap(),
+                "." => 0 as u64,
+                _ => u64::from_str(frame).unwrap(),
             }
         }
     }
@@ -283,8 +284,8 @@ pub struct IDRecord{
     pub gene_id: String,
     pub gene_name: String,
     pub chrom: String,
-    pub offset: u32,
-    pub frame: u32,
+    pub offset: u64,
+    pub frame: u64,
     pub freq: f64,
     pub depth: u32,
     pub nvar: u32,
@@ -302,7 +303,7 @@ pub struct IDRecord{
 }
 
 impl IDRecord {
-    pub fn update(&self, rec: &IDRecord, offset: u32, frame: u32, freq: f64, wt_seq: Vec<u8>, mt_seq: Vec<u8>, wlen: u32) -> Self {
+    pub fn update(&self, rec: &IDRecord, offset: u64, frame: u64, freq: f64, wt_seq: Vec<u8>, mt_seq: Vec<u8>, wlen: u64) -> Self {
         debug!("Start updating record");
         let mut shaid = sha1::Sha1::new();
         // generate unique haplotype ID containing position, transcript and sequence
@@ -339,8 +340,8 @@ impl IDRecord {
                 break;
             }
             let active_variant = match self.strand == "Forward" {
-                true => self.offset + offset <= p.parse::<u32>().unwrap(),
-                false => self.offset + window_len - offset >= p.parse::<u32>().unwrap(),
+                true => self.offset + offset <= p.parse::<u64>().unwrap(),
+                false => self.offset + window_len - offset >= p.parse::<u64>().unwrap(),
             };
             if active_variant {
                 s_p_vec.push(p.to_string());
@@ -357,8 +358,8 @@ impl IDRecord {
                 break;
             }
             let active_variant = match self.strand == "Forward" {
-                true => rec.offset + offset >= p.parse::<u32>().unwrap(),
-                false => rec.offset + window_len - 3 - offset <= p.parse::<u32>().unwrap(),
+                true => rec.offset + offset >= p.parse::<u64>().unwrap(),
+                false => rec.offset + window_len - 3 - offset <= p.parse::<u64>().unwrap(),
             };
             if active_variant {
                 debug!("hey");
@@ -376,7 +377,7 @@ impl IDRecord {
             if p == "" {
                 break;
             }
-            if self.offset + offset <= p.parse::<u32>().unwrap() {
+            if self.offset + offset <= p.parse::<u64>().unwrap() {
                 g_p_vec.push(p.to_string());
                 g_aa_vec.push(germline_aa_change[c]);
                 nvariants += 1;
@@ -388,7 +389,7 @@ impl IDRecord {
             if p == "" {
                 break;
             }
-            if rec.offset >= p.parse::<u32>().unwrap() - offset {
+            if rec.offset >= p.parse::<u64>().unwrap() - offset {
                 g_p_vec.push(p.to_string());
                 g_aa_vec.push(other_germline_aa_change[c]);
                 nvariants += 1;
@@ -412,6 +413,14 @@ impl IDRecord {
         };
 
         debug!("nvars {} {}", self.nvar, rec.nvar);
+
+        let mut vr = self.variant_sites.to_owned() + "|" + &rec.variant_sites;
+        if vr.starts_with("|") {
+            vr = vr[1..].to_string();
+        }
+        if vr.ends_with("|") {
+            vr = vr[..vr.len() - 1 ].to_string();
+        }
         IDRecord {
             id: fasta_id,
             transcript: self.transcript.to_owned(),
@@ -427,7 +436,7 @@ impl IDRecord {
             nvariant_sites: self.nvariant_sites + rec.nvariant_sites,
             nsomvariant_sites: self.nsomvariant_sites + rec.nsomvariant_sites,
             strand: self.strand.to_owned(),
-            variant_sites: self.variant_sites.to_owned() + "|" + &rec.variant_sites,
+            variant_sites: vr,
             somatic_positions: s_p_vec.join("|"),
             somatic_aa_change: s_aa_vec.join("|"),
             germline_positions: g_p_vec.join("|"),

@@ -13,7 +13,7 @@ use bincode::{deserialize_from, serialize_into};
 
 use crate::common::IDRecord;
 
-/* #[derive(Deserialize, Debug, Serialize, Clone)]
+/* #[derive(Deserialize, debug, Serialize, Clone)]
 pub struct IDRecord{
     id: String,
     transcript: String,
@@ -174,9 +174,9 @@ pub fn filter<F: io::Read, O: io::Write>(
     let mut current = (String::from(""), String::from(""), String::from(""));
     let mut current_variant = (String::from(""), String::from(""), String::from(""));
     let mut region_sites = (String::from(""), String::from(""));
-    let mut frequencies: BTreeMap<(u32, String, String), Vec<f64>> = BTreeMap::new();
-    let mut depth: BTreeMap<(u32, String, String), Vec<u32>> = BTreeMap::new();
-    let mut records: BTreeMap<(u32, String, String), Vec<(IDRecord, String, String)>> = BTreeMap::new();
+    let mut frequencies: BTreeMap<(u64, String, String), Vec<f64>> = BTreeMap::new();
+    let mut depth: BTreeMap<(u64, String, String), Vec<u32>> = BTreeMap::new();
+    let mut records: BTreeMap<(u64, String, String), Vec<(IDRecord, String, String)>> = BTreeMap::new();
     let mut seen_peptides = HashSet::new();
     let mut stop_gained = BTreeMap::new();
     // get peptide info from info.tsv table (including sequences)
@@ -250,8 +250,8 @@ pub fn filter<F: io::Read, O: io::Write>(
                         continue;
                     },
                     "Reverse" => if (neopeptide.len() - (i + peptide_length)) * 3 + offset > som_pos {
-                        //i += 1;
-                        //continue;
+                        i += 1;
+                        continue;
                     },
                     _ => ()
                 };
@@ -268,6 +268,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             let vars = &row.somatic_positions;
             let germline_vars = &row.germline_positions;
             if (transcript.to_string(), vars.to_string(), germline_vars.to_string()) == current {
+                debug!("Current: {:?}", current);
                 if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
                     //let row2 = row.clone();
                     //removed_writer.serialize(row2)?;

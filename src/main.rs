@@ -82,7 +82,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .delimiter(b'\t')
         .from_path(matches.value_of("tsv").unwrap())?;
     debug!("Start");
-    let window_len = value_t!(matches, "window-len", u32)?;
+    let window_len = value_t!(matches, "window-len", u64)?;
     microphasing::phase(
         &mut fasta_reader,
         &mut gtf_reader,
@@ -121,7 +121,7 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     .delimiter(b'\t')
     .from_path(matches.value_of("tsv").unwrap())?;
 
-    let window_len = value_t!(matches, "window-len", u32)?;
+    let window_len = value_t!(matches, "window-len", u64)?;
     normal_microphasing::phase(
         &mut fasta_reader,
         &mut gtf_reader,
@@ -229,7 +229,7 @@ pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let mut tsv_writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(matches.value_of("tsv").unwrap())?;
 
-    let window_len = value_t!(matches, "window-len", u32)?;
+    let window_len = value_t!(matches, "window-len", u64)?;
     microphasing_wholegenome::phase(
         &mut fasta_reader, bcf_reader,
         bam_reader, &mut fasta_writer, &mut tsv_writer, &mut normal_writer, window_len, only_relevant
