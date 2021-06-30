@@ -704,7 +704,7 @@ impl ObservationMatrix {
                 && splice_pos != 2
                 && (window_len == this_window_len || indel)
                 && !(is_first_exon_window)
-                && ((normal_peptide != neopeptide) || !indel || freq == 1.0)
+                && ((normal_peptide != neopeptide) || !indel || (freq - 1.0).abs() < f64::EPSILON)
             {
                 // if the peptide is not in the correct reading frame because of leftover bases, we do not care about the stop codon since it is not in the ORF
                 debug!("Peptide with STOP codon: {}", neopeptide);
@@ -748,18 +748,18 @@ impl ObservationMatrix {
                     }
                 }
                 // check if variant position is already in the variant_site list
-                if c == 0 {
+                if c == 0 || !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
                     n_variantsites += 1;
                     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
                     if !(variants[c as usize].is_germline()) {
                         n_som_variantsites += 1;
                     }
-                } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
-                    n_variantsites += 1;
-                    variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
-                    if !(variants[c as usize].is_germline()) {
-                        n_som_variantsites += 1;
-                    }
+                // } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                //     n_variantsites += 1;
+                //     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
+                //     if !(variants[c as usize].is_germline()) {
+                //         n_som_variantsites += 1;
+                //     }
                 }
                 c += 1
             }
@@ -1156,9 +1156,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 };
 
                 // first window in the exon, no variants are deleted
-                let deleted_vars = if offset == old_offset {
-                    0
-                } else if is_short_exon && !read_through {
+                let deleted_vars = if offset == old_offset || (is_short_exon && !read_through) {
                     0
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
@@ -1556,9 +1554,6 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         new_mt_sequences
                                             .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                     }
-                                } else if prev_wt_sequence != prev_mt_sequence {
-                                    new_mt_sequences
-                                        .push(format!("{}{}", prev_mt_sequence, mt_sequence));
                                 } else {
                                     new_mt_sequences
                                         .push(format!("{}{}", prev_mt_sequence, mt_sequence));
@@ -1571,7 +1566,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 //Test: Keep even wildtype records for merging if we are in a short exon
                                 if is_short_exon && !is_last_exon {
                                     debug!("Exon is shorter than window - merge");
-                                    let out_freq = match record.freq == prev_record.freq {
+                                    let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
                                         true => record.freq,
                                         false => record.freq * prev_record.freq,
                                     };
@@ -1604,7 +1599,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Prevrecord: {:?}", prev_record);
                                         debug!("Record: {:?}", record);
                                         debug!("Exon is shorter than window - merge");
-                                        let out_freq = match record.freq == prev_record.freq {
+                                        let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
                                             true => record.freq,
                                             false => record.freq * prev_record.freq,
                                         };
@@ -1706,7 +1701,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             true => frameshift_freq,
                                         };
 
-                                        let out_freq = match freq_record == freq_prev_record {
+                                        let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
                                             true => freq_record,
                                             false => freq_record * freq_prev_record,
                                         };

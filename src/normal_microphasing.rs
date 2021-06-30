@@ -418,7 +418,7 @@ impl ObservationMatrix {
 
                     while j < variants.len() && i == variants[j].pos() {
                         debug!("j: {}, variantpos: {}", j, variants[j].pos());
-                        if freq == 1.0 && !(variants[j].is_germline()) {
+                        if (freq - 1.0).abs() < f64::EPSILON && !(variants[j].is_germline()) {
                             j += 1;
                             variant_profile.push(0);
                             continue;
@@ -550,13 +550,7 @@ impl ObservationMatrix {
                         _ => {}
                     }
                     // check if variant position is already in the variant_site list
-                    if c == 0 {
-                        n_variantsites += 1;
-                        variantsites_pos_vec.push(variants[c as usize].pos().to_string());
-                        if !(variants[c as usize].is_germline()) {
-                            n_som_variantsites += 1;
-                        }
-                    } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    if c == 0 || !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()){
                         n_variantsites += 1;
                         variantsites_pos_vec.push(variants[c as usize].pos().to_string());
                         if !(variants[c as usize].is_germline()) {
@@ -907,9 +901,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 };
 
                 // first window in the exon, no variants are deleted
-                let deleted_vars = if offset == old_offset {
-                    0
-                } else if is_short_exon {
+                let deleted_vars = if offset == old_offset || is_short_exon {
                     0
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation

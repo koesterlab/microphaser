@@ -222,7 +222,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                 continue;
             }
         }
-        if neopeptide.contains(&"X".as_bytes()[0]) && (row.freq == (1 as f64) || row.frame > 0) {
+        if neopeptide.contains(&"X".as_bytes()[0]) && ((row.freq - 1.0).abs() < f64::EPSILON || row.frame > 0) {
             let tuple = (row.transcript.clone(), row.frame);
             stop_gained.insert(tuple, offset);
         }
