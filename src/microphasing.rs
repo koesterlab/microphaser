@@ -754,12 +754,12 @@ impl ObservationMatrix {
                     if !(variants[c as usize].is_germline()) {
                         n_som_variantsites += 1;
                     }
-                // } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
-                //     n_variantsites += 1;
-                //     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
-                //     if !(variants[c as usize].is_germline()) {
-                //         n_som_variantsites += 1;
-                //     }
+                    // } else if !(variants[c as usize].pos() == variants[(c - 1) as usize].pos()) {
+                    //     n_variantsites += 1;
+                    //     variantsites_pos_vec.push((variants[c as usize].pos() + 1).to_string());
+                    //     if !(variants[c as usize].is_germline()) {
+                    //         n_som_variantsites += 1;
+                    //     }
                 }
                 c += 1
             }
@@ -1566,7 +1566,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 //Test: Keep even wildtype records for merging if we are in a short exon
                                 if is_short_exon && !is_last_exon {
                                     debug!("Exon is shorter than window - merge");
-                                    let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
+                                    let out_freq = match (record.freq - prev_record.freq).abs()
+                                        < f64::EPSILON
+                                    {
                                         true => record.freq,
                                         false => record.freq * prev_record.freq,
                                     };
@@ -1599,7 +1601,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                         debug!("Prevrecord: {:?}", prev_record);
                                         debug!("Record: {:?}", record);
                                         debug!("Exon is shorter than window - merge");
-                                        let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
+                                        let out_freq = match (record.freq - prev_record.freq).abs()
+                                            < f64::EPSILON
+                                        {
                                             true => record.freq,
                                             false => record.freq * prev_record.freq,
                                         };
@@ -1701,7 +1705,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                             true => frameshift_freq,
                                         };
 
-                                        let out_freq = match (record.freq - prev_record.freq).abs() < f64::EPSILON {
+                                        let out_freq = match (record.freq - prev_record.freq).abs()
+                                            < f64::EPSILON
+                                        {
                                             true => freq_record,
                                             false => freq_record * freq_prev_record,
                                         };
