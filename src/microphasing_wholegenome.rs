@@ -55,14 +55,18 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
         Variant::Insertion { .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                if let Cigar::Ins(_) = *c {return Ok(true)}
+                if let Cigar::Ins(_) = *c {
+                    return Ok(true);
+                }
             }
             Ok(false)
         }
         Variant::Deletion { .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                if let Cigar::Del(_) = *c {return Ok(true)}
+                if let Cigar::Del(_) = *c {
+                    return Ok(true);
+                }
             }
             Ok(false)
         }
@@ -226,10 +230,7 @@ impl ObservationMatrix {
         );
         if end_pos >= interval_end && start_pos <= interval_start {
             // only insert if end_pos is larger than the interval end
-            let mut obs = Observation {
-                read,
-                haplotype: 0,
-            };
+            let mut obs = Observation { read, haplotype: 0 };
             for (i, variant) in self.variants.iter().enumerate() {
                 obs.update_haplotype(i, variant)?;
             }

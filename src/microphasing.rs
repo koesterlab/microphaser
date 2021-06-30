@@ -114,10 +114,11 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
             // TODO compare the two using a pair HMM or use cigar string
             debug!("Variant length {}", len);
             for c in read.cigar().iter() {
-                if let Cigar::Ins(_) = *c { match c.len() == len as u32 {
-                    true => return Ok(true),
-                    false => (),
-                }
+                if let Cigar::Ins(_) = *c {
+                    match c.len() == len as u32 {
+                        true => return Ok(true),
+                        false => (),
+                    }
                 }
             }
             Ok(false)
@@ -125,10 +126,11 @@ pub fn supports_variant(read: &bam::Record, variant: &Variant) -> Result<bool, B
         Variant::Deletion { len, .. } => {
             // TODO compare the two using a pair HMM or use cigar string
             for c in read.cigar().iter() {
-                if let Cigar::Del(_) = *c { match c.len() == len as u32 {
-                    true => return Ok(true),
-                    false => (),
-                }
+                if let Cigar::Del(_) = *c {
+                    match c.len() == len as u32 {
+                        true => return Ok(true),
+                        false => (),
+                    }
                 }
             }
             Ok(false)
@@ -205,7 +207,6 @@ impl Default for ObservationMatrix {
         Self::new()
     }
 }
-    
 
 impl ObservationMatrix {
     pub fn new() -> Self {
@@ -1446,7 +1447,10 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                 hap_vec = haplotype_results.0;
                             }
                             debug!("hap_vec: {:?}", hap_vec);
-                            if frameshift != 0 && frameshift_frequencies.contains_key(&frameshift) && frameshift_frequencies.get(&frameshift).unwrap().0 == 0.0 {
+                            if frameshift != 0
+                                && frameshift_frequencies.contains_key(&frameshift)
+                                && frameshift_frequencies.get(&frameshift).unwrap().0 == 0.0
+                            {
                                 stopped_frameshift = key;
                             }
                         }
@@ -1464,7 +1468,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     debug!("frameshifts: {:?}", frameshifts);
                     debug!("Key to remove: {}", stopped_frameshift);
                     // remove frameshift which reached stop codon
-                    if stopped_frameshift != 3 && *(frameshifts.get(&stopped_frameshift).unwrap()) != 0 {
+                    if stopped_frameshift != 3
+                        && *(frameshifts.get(&stopped_frameshift).unwrap()) != 0
+                    {
                         frameshifts.remove(&stopped_frameshift);
                     }
                     if frameshifts.is_empty() {
@@ -1620,7 +1626,9 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                                     for (&pos, &frameshift) in &mut active_frameshifts {
                                         // possible shift if exon starts with the rest of a split codon (splicing)
                                         debug!("Frameshift: {}", frameshift);
-                                        frameshift_frequencies.entry(frameshift).or_insert((0.0, false));
+                                        frameshift_frequencies
+                                            .entry(frameshift)
+                                            .or_insert((0.0, false));
 
                                         let shift_in_window = match transcript.strand {
                                             PhasingStrand::Forward => pos >= prev_record.offset,
