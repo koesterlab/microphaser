@@ -351,7 +351,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                             false => {
                                 fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
                                 //if we don't have a matching normal, do not write an empty entry to the output
-                                if w_peptide.is_empty() {
+                                if !w_peptide.is_empty() {
                                     normal_writer.write(
                                         &out_row.id.to_string(),
                                         None,

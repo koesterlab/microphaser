@@ -707,7 +707,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         };
         // Possible rest of an exon that does not form a complete codon yet
         let mut exon_rest = 0;
-        //let mut exon_count = 0;
+
         // Haplotypes from the end of the last exon
         let mut prev_hap_vec: Vec<HaplotypeSeq> = Vec::new();
         let mut hap_vec: Vec<HaplotypeSeq> = Vec::new();
@@ -720,12 +720,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             }
             debug!("Exon Start: {}", exon.start);
             debug!("Exon End: {}", exon.end);
-            //exon_count += 1;
+
             if exon.start > exon.end {
                 continue;
             }
-            let is_last_exon = exon_count as usize == exon_number;
-            let is_first_exon = exon_count == 1;
+            let is_last_exon = exon_count as usize == exon_number - 1;
+            let is_first_exon = exon_count == 0;
             debug!("Exon Length: {}", exon.end - exon.start);
             let exon_len = exon.end - exon.start;
             debug!("Exon Rest: {}", exon_rest);
