@@ -1,0 +1,8 @@
+id	transcript	gene_id	gene_name	chrom	offset	frame	freq	depth	nvar	nsomatic	nvariant_sites	nsomvariant_sites	strand	variant_sites	somatic_positions	somatic_aa_change	germline_positions	germline_aa_change	normal_sequence	mutant_sequence
+1_F	Tr1	G1	GeneA	1	1	1	0.5	20	1	1	1	1	Forward	1	30	*W_fs				ATGCGTCGACGAATTATTACAGATAGGTGGTATATAGAA
+2_R	Tr2	G1	GeneA	1	1	1	0.5	20	1	1	1	1	Reverse	1	6	*W_fs				ATGCCACGACGAATTATTACAGATAGGTGGTATATAGAA
+3A1_F	Tr3	G1	GeneA	1	1	1	0.5	20	1	1	1	1	Forward	1	4	fs				ATGCCACGACGAATTATTACAGATAGGTGGTATATATGA
+3B1_F	Tr4	G1	GeneA	1	1	0	0.5	20	1	1	1	1	Forward	1	4	fs				ATGCCACGACGAATTATTACAGATAGGTGGTATATAGAA
+3A2_F	Tr3	G1	GeneA	1	2	1	0.5	20	1	1	1	1	Forward	1	4	fs				CCACGACGAATTATTACAGATAGGTGGTATATATGATTT
+3B2_F	Tr4	G1	GeneA	1	2	0	0.5	20	1	1	1	1	Forward	1	4	fs				CCACGACGAATTATTACAGATAGGTGGTATATAGAATTT
+4_F	Tr5	G1	GeneA	1	2	0	0.5	20	1	1	1	1	Forward	1	4	fs				TGACGACGAATTATTACAGATAGGTGGTATATAGAATTT

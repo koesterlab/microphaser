@@ -27,8 +27,23 @@ args:
       short: o
       default_value: "info.filtered.tsv"
       help: filtered info.tsv
+  - similaroutput:
+      long: similaroutput
+      short: s
+      default_value: "info.removed.tsv"
+      help: save peptides which have been removed due to self-similarity
+  - filteredpeptides:
+      long: filteredpeptides
+      short: p
+      default_value: "peptides.removed.fasta"
+      help: aminoacid sequences of filtered peptides
   - normaloutput:
       long: normaloutput
       short: n
       default_value: "normal.filtered.fa"
       help: filtered unmutated peptides
+  - peptide-length:
+      long: peptide-length
+      short: l
+      default_value: "9"
+      help: length of output peptides
