@@ -1,7 +1,7 @@
 name: build_reference
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
 about: Build the normal peptidome as reference to filter self-similar neopeptides
-usage: microphaser build_reference --reference peptides.fasta -l 9 --output peptides.bin --peptides_out translated.fasta
+usage: microphaser build_reference --reference peptides.fasta -l 9 --output peptides.bin --peptides-out translated.fasta
 
 
 global_settings:
@@ -21,7 +21,7 @@ args:
       required: true
       help: binary output file containing reference peptides as HashSet
   - peptides:
-      long: peptides_out
+      long: peptides-out
       short: p
       value_name: FILE
       required: true

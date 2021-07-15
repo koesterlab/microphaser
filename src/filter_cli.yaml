@@ -1,7 +1,7 @@
 name: filter
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
 about: Filter neopeptides that are present in the normal proteome
-usage: microphaser filter --ref genome.fasta --tsv neopeptides.tsv -l 9 --tsvoutput filtered.tsv --similaroutput removed.tsv --filteredpeptides removed.fasta --normaloutput filtered.wt.fasta > filtered.mt.fasta 
+usage: microphaser filter --ref genome.fasta --tsv neopeptides.tsv -l 9 --tsv-output filtered.tsv --removed-output removed.tsv --removed-peptides removed.fasta --normal-output filtered.wt.fasta > filtered.mt.fasta 
 
 
 global_settings:
@@ -25,22 +25,22 @@ args:
       required: true
       help: binary file containing reference peptides as HashSet - output from build_reference
   - tsvoutput:
-      long: tsvoutput
+      long: tsv-output
       short: o
       default_value: "info.filtered.tsv"
       help: filtered info.tsv
   - similaroutput:
-      long: similaroutput
+      long: similar-removed
       short: s
       default_value: "info.removed.tsv"
       help: save peptides which have been removed due to self-similarity
   - filteredpeptides:
-      long: filteredpeptides
+      long: removed-peptides
       short: p
       default_value: "peptides.removed.fasta"
       help: aminoacid sequences of filtered peptides
   - normaloutput:
-      long: normaloutput
+      long: normal-output
       short: n
       default_value: "normal.filtered.fa"
       help: filtered unmutated peptides
