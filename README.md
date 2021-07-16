@@ -50,35 +50,37 @@ It can be used in tumor neoantigen prediction to generate the neo-peptidome.
 ### Run
   
   Currently, microphaser consists of four different submodules:
-  * somatic (returns neopeptides and their corresponding wildtype peptides)
-  * normal (returns all wildtype peptides of the patient)
-  * build_reference (returns a binary file representing the patients wildtype peptidome)
-  * filter (compares neopeptides against the wildtype peptidome and removes self-similar candidates)
+
+  - somatic (returns neopeptides and their corresponding normal peptides)
+  - normal (returns all normal peptides of the patient)
+  - build_reference (returns a binary file representing the patients normal peptidome)
+  - filter (compares neopeptides against the normal peptidome and removes self-similar candidates)
+
   
   You can run microphaser like this:
   
   Phasing of the tumor reads and variants:
 
   ```
-  microphaser somatic tumor.bam -r reference.fa -b all_variants.bcf -t neopeptides.info.tsv -n wildtype_peptides.fa < reference.gtf > neopeptides.fa
+  microphaser somatic tumor.bam -r reference.fasta -b all_variants.bcf -t neopeptides.info.tsv -n peptides.wt.fasta < annotation.gtf > peptides.mt.fasta
   ```
   
-  Generation of the patients germline peptidome:
+  Generation of the patients healthy peptidome:
   
   ```
-  microphaser normal healthy.bam -r reference.fa -b germline_variants.bcf -n wildtype_peptides.fa < reference.gtf > germline_peptidome.fa
+  microphaser normal normal.bam -r reference.fasta -b germline_variants.bcf < annotation.gtf > healthy_peptides.fasta
   ```
   
-  Building the reference binary file of the germline peptidome: 
+  Building the reference binary file of the healthy peptidome: 
   
   ```
-  microphaser build_reference germline_peptidome.fa > germline_peptidome.bin
+  microphaser build_reference -r healthy_peptides.fasta -o peptides.bin > peptides.translated.fasta
   ```
 
   Filtering the neopeptide candidates from subcommand ```microphaser somatic```: 
 
   ```
-  microphaser filter -r germline_peptidome.bin -t neopeptides.info.tsv -o neopeptides.filtered.info.tsv -n wildtype_peptides.filtered.fa > neopeptides.filtered.fa
+  microphaser filter -r peptides.bin -t neopeptides.info.tsv -o neopeptides.filtered.info.tsv -n normal_peptides.filtered.fasta > neopeptides.filtered.fasta
   ```
   
 ## Authors
