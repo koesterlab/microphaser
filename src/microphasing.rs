@@ -902,7 +902,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     let mut read_tree = BTreeMap::new();
     debug!("Start Phasing");
     read_buffer.fetch(&gene.chrom.as_bytes(), gene.start(), gene.end())?;
-
+    debug!("Read Buffer Length {}", read_buffer.len());
     let mut max_read_len = 0;
     // load read buffer into BTree
     for rec in read_buffer.iter() {
@@ -1945,6 +1945,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     window_len: u64,
 ) -> Result<(), Box<dyn Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);
+    debug!("Read Buffer Length {}", read_buffer.len());
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
     let mut refseq = Vec::new(); // buffer for reference sequence
     debug!("refseq length {}", refseq.len());

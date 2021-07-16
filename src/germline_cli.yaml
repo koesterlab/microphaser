@@ -1,6 +1,8 @@
 name: normal
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
 about: Normal microphasing to build a reference peptidome.
+usage: microphaser normal normal.bam --ref genome.fasta --variants germline.bcf -w 27 --tsv info.tsv  < annotation.gtf > peptides.fa
+
 
 global_settings:
   - ColoredHelp
@@ -29,7 +31,7 @@ args:
       long: tsv
       short: t
       value_name: FILE
-      required: true
+      default_value: "info.tsv"
       help: A tsv to store the origin information info of normal peptides
   - window-len:
       long: window-len

@@ -1,6 +1,7 @@
 name: somatic
 authors: Jan Forster <j.forster@dkfz.de>, Johannes Köster <johannes.koester@tu-dortmund.de>
 about: Tumor/Normal microphasing for neoantigen prediction.
+usage: microphaser somatic tumor.bam --ref genome.fasta --variants tumor.bcf -w 27 --tsv info.tsv --normal-output peptides.wt.fasta < annotation.gtf > peptides.mt.fa
 
 global_settings:
   - ColoredHelp
@@ -12,7 +13,7 @@ args:
       help: Verbose output.
   - tumor-sample:
       required: true
-      help: The tumor or normal BAM file.
+      help: The tumor sample BAM file.
   - ref:
       long: ref
       short: r
@@ -36,7 +37,7 @@ args:
       default_value: "info.tsv"
       help: TSV output for further information on haplotype IDs
   - normal:
-      long: normaloutput
+      long: normal-output
       short: n
       value_name: FILE
       default_value: "normal.fasta"

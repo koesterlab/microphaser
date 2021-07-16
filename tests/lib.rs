@@ -104,7 +104,7 @@ fn test_empty() {
     microphaser_somatic(&format!(
         "tests/resources/test_forward/forward_test.bam \
          --variants tests/resources/test_empty/empty_test.vcf --tsv tests/output/empty_test.tsv \
-         --normaloutput tests/output/empty_test.normal.fa \
+         --normal-output tests/output/empty_test.normal.fa \
          --ref {} > tests/output/empty_test.fa < tests/resources/test_forward/forward_test.gtf",
         reference
     ));
@@ -135,8 +135,8 @@ fn test_filter() {
     fs::create_dir("tests/output");
     microphaser_filter(
         "--reference tests/resources/test_filter/reference.binary -l 9 \
-         --tsv tests/resources/test_filter/info.tsv --tsvoutput tests/output/info.filtered.tsv \
-         --normaloutput tests/output/normal.filtered.fa > tests/output/tumor.filtered.fa",
+         --tsv tests/resources/test_filter/info.tsv --tsv-output tests/output/info.filtered.tsv \
+         --normal-output tests/output/normal.filtered.fa > tests/output/tumor.filtered.fa",
     );
     test_output(
         "tests/output/tumor.filtered.fa",
@@ -157,8 +157,8 @@ fn test_filter_long() {
     fs::create_dir("tests/output");
     microphaser_filter(
         "--reference tests/resources/test_filter_long/reference.binary -l 9 \
-         --tsv tests/resources/test_filter_long/info.tsv --tsvoutput tests/output/info.filtered_long.tsv \
-         --normaloutput tests/output/normal.filtered_long.fa > tests/output/tumor.filtered_long.fa",
+         --tsv tests/resources/test_filter_long/info.tsv --tsv-output tests/output/info.filtered_long.tsv \
+         --normal-output tests/output/normal.filtered_long.fa > tests/output/tumor.filtered_long.fa",
     );
     test_output(
         "tests/output/tumor.filtered_long.fa",
@@ -179,8 +179,8 @@ fn test_filter_fs() {
     fs::create_dir("tests/output");
     microphaser_filter(
         "--reference tests/resources/test_filter_fs/reference.binary -l 9 \
-         --tsv tests/resources/test_filter_fs/info.tsv --tsvoutput tests/output/info.filtered_fs.tsv \
-         --normaloutput tests/output/normal.filtered_fs.fa > tests/output/tumor.filtered_fs.fa",
+         --tsv tests/resources/test_filter_fs/info.tsv --tsv-output tests/output/info.filtered_fs.tsv \
+         --normal-output tests/output/normal.filtered_fs.fa > tests/output/tumor.filtered_fs.fa",
     );
     test_output(
         "tests/output/tumor.filtered_fs.fa",
@@ -204,7 +204,7 @@ fn test_forward_somatic() {
         "tests/resources/test_forward/forward_test.bam \
          --variants tests/resources/test_forward/forward_test.vcf \
          --tsv tests/output/forward_test.tsv --ref {} \
-         --normaloutput tests/output/forward_test.normal.fa \
+         --normal-output tests/output/forward_test.normal.fa \
          > tests/output/forward_test.fa < tests/resources/test_forward/forward_test.gtf",
         reference
     ));
@@ -242,7 +242,7 @@ fn splice_test_forward() {
     let reference = download_reference("chr7");
     microphaser_somatic(&format!("tests/resources/splice_forward_test/INSIG1.test.bam \
         --variants tests/resources/splice_forward_test/INSIG1.test.vcf \
-        --tsv tests/output/splice_forward_test.tsv --normaloutput tests/output/splice_forward_test.normal.fa --ref {} \
+        --tsv tests/output/splice_forward_test.tsv --normal-output tests/output/splice_forward_test.normal.fa --ref {} \
         > tests/output/splice_forward_test.fa < tests/resources/splice_forward_test/INSIG1.test.gtf", reference));
     test_output(
         "tests/output/splice_forward_test.fa",
@@ -278,7 +278,7 @@ fn test_reverse() {
     let reference = download_reference("chr1");
     microphaser_somatic(&format!("tests/resources/test_reverse/reverse_test.bam \
         --variants tests/resources/test_reverse/reverse_test.vcf \
-        --tsv tests/output/reverse_test.tsv --normaloutput tests/output/reverse_test.normal.fa --ref {} \
+        --tsv tests/output/reverse_test.tsv --normal-output tests/output/reverse_test.normal.fa --ref {} \
         > tests/output/reverse_test.fa < tests/resources/test_reverse/reverse_test.gtf", reference));
     test_output(
         "tests/output/reverse_test.fa",
@@ -313,7 +313,7 @@ fn splice_test_reverse() {
     let reference = download_reference("chr6");
     microphaser_somatic(&format!("tests/resources/splice_reverse_test/MMS22L.test.bam \
        --variants tests/resources/splice_reverse_test/MMS22L.test.vcf --tsv tests/output/splice_reverse_test.tsv \
-       --normaloutput tests/output/splice_reverse_test.normal.fa --ref {} \
+       --normal-output tests/output/splice_reverse_test.normal.fa --ref {} \
        > tests/output/splice_reverse_test.fa < tests/resources/splice_reverse_test/MMS22L.test.gtf", reference));
     test_output(
         "tests/output/splice_reverse_test.fa",
@@ -335,7 +335,7 @@ fn three_way_splice() {
    let reference = download_reference("chr19");
    microphaser_somatic(&format!("tests/resources/three_way_splice/three_way_splice.bam \
        --variants tests/resources/three_way_splice/three_way_splice.vcf --tsv tests/output/three_way_splice.tsv \
-       --normaloutput tests/output/three_way_splice.wt.fa --ref {} \
+       --normal-output tests/output/three_way_splice.wt.fa --ref {} \
        > tests/output/three_way_splice.mt.fa < tests/resources/three_way_splice/three_way_splice.gtf", reference));
    test_output("tests/output/three_way_splice.mt.fa", "tests/resources/three_way_splice/expected_output/three_way_splice.mt.fa");
    test_output("tests/output/three_way_splice.wt.fa", "tests/resources/three_way_splice/expected_output/three_way_splice.wt.fa");
@@ -348,7 +348,7 @@ fn frameshift_test() {
    let reference = download_reference("chr11");
    microphaser_somatic(&format!("tests/resources/frameshift_test/frameshift_test.bam \
        --variants tests/resources/frameshift_test/frameshift_test.vcf --tsv tests/output/frameshift_test.tsv \
-       --normaloutput tests/output/frameshift_test.wt.fa --ref {} \
+       --normal-output tests/output/frameshift_test.wt.fa --ref {} \
        > tests/output/frameshift_test.mt.fa < tests/resources/frameshift_test/frameshift_test.gtf", reference));
    test_output("tests/output/frameshift_test.mt.fa", "tests/resources/frameshift_test/expected_output/frameshift_test.mt.fa");
    test_output("tests/output/frameshift_test.wt.fa", "tests/resources/frameshift_test/expected_output/frameshift_test.wt.fa");
