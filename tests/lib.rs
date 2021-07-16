@@ -62,12 +62,12 @@ fn microphaser_filter(cmd: &str) {
         .success());
 }
 
-/*fn microphaser_build(cmd: &str) {
+fn microphaser_build(cmd: &str) {
     assert!(Command::new("bash")
             .arg("-c")
             .arg(format!("RUST_BACKTRACE=1 target/debug/microphaser build_reference {}", cmd))
             .spawn().unwrap().wait().unwrap().success());
-}*/
+}
 
 fn download_reference(chrom: &str) -> String {
     let reference = format!("tests/resources/{}.fa", chrom);
@@ -122,13 +122,13 @@ fn test_empty() {
     );
 }
 
-/*#[test]
+#[test]
 fn test_build_ref() {
     fs::create_dir("tests/output");
-    microphaser_build("--reference tests/resources/test_build/reference.fa \
-        --output tests/output/test_build_ref.binary");
-    test_output("tests/output/test_build_ref.binary", "tests/resources/test_build/expected_output/reference.binary");
-}*/
+    microphaser_build("--reference tests/resources/test_build/reference.fa -l4 \
+        --output tests/output/test_build_ref.binary > tests/output/test_build_ref.fasta");
+    test_output("tests/output/test_build_ref.fasta", "tests/resources/test_build/expected_output/reference_peptides.fasta");
+}
 
 #[test]
 fn test_filter() {
