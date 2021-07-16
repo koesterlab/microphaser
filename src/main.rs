@@ -151,7 +151,7 @@ pub fn run_build(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let peptide_length = value_t!(matches, "peptide-length", usize)?;
     let reference_reader = fasta::Reader::from_file(&matches.value_of("reference").unwrap())?;
     let binary_writer = File::create(&matches.value_of("output").unwrap())?;
-    let mut fasta_writer = fasta::Writer::to_file(matches.value_of("peptides").unwrap())?;
+    let mut fasta_writer = fasta::Writer::new(io::stdout());
 
     peptides::build(
         reference_reader,

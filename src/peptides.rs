@@ -101,10 +101,10 @@ fn to_protein(s: &[u8], mut frame: i32) -> Result<Vec<u8>, ()> {
     Ok(p)
 }
 
-pub fn build<F: io::Read>(
+pub fn build<F: io::Read, O: io::Write>(
     reference_reader: fasta::Reader<F>,
     binary_writer: fs::File,
-    fasta_writer: &mut fasta::Writer<fs::File>,
+    fasta_writer: &mut fasta::Writer<O>,
     peptide_length: usize,
 ) -> Result<(), Box<dyn Error>> {
     // build hashSet from reference peptide sequences
