@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use alphabets::dna;
 use bio::alphabets;
 use bio::io::fasta;
+use statrs::distribution::{Binomial, Discrete};
 
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
@@ -139,6 +140,23 @@ pub fn build<F: io::Read, O: io::Write>(
     serialize_into(binary_writer, &ref_set)?;
     debug!("Reference is done!");
     Ok(())
+}
+
+pub fn prob_func(alt: &[f64], depth: &[u32]) -> BTreeMap<u64,f64> {
+    debug!("alts {:?}, dp {:?}", alt, depth);
+    let mut probabilities = BTreeMap::new();
+    for t in 0..101 {
+        let theta = t as f64 * 0.01;
+        let mut i = 0;
+        let mut prob = 1.0;
+        while i < alt.len() {
+            let bin = Binomial::new(theta, depth[i] as u64).unwrap();
+            prob *= bin.pmf(alt[i].round() as u64);
+            i += 1;
+        }
+        probabilities.insert(t, prob);
+    }
+    probabilities
 }
 
 pub fn compute_ml(alt_depths: &[f64], depth: &[u32]) -> Result<f64, Box<dyn Error>> {
@@ -323,15 +341,16 @@ pub fn filter<F: io::Read, O: io::Write>(
                 //current != current_variant { //som_pos != current_variant {
                 debug!("Printing records");
                 for (key, entries) in &records {
-                    let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap())
-                        .unwrap();
+                    let prob_map = prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
+                    debug!("Map {:?}", prob_map);
+                    let ml = *prob_map.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
                     for (row, np, wp) in entries {
                         let n_peptide = np.as_bytes();
                         let w_peptide = wp.as_bytes();
                         let mut out_row = row.clone();
                         out_row.freq = match out_row.depth == 0 {
                             true => 0.0,
-                            false => ml,
+                            false => ml as f64 * 0.01,
                         };
                         debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
                         // check if the somatic peptide is present in the reference normal peptidome
@@ -424,12 +443,14 @@ pub fn filter<F: io::Read, O: io::Write>(
     }
     debug!("Printing records");
     for (key, entries) in &records {
-        let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
+        //let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
+        let prob_map = prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
+        let ml = *prob_map.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
         for (row, np, wp) in entries {
             let n_peptide = np.as_bytes();
             let w_peptide = wp.as_bytes();
             let mut out_row = row.clone();
-            out_row.freq = ml;
+            out_row.freq = ml as f64 * 0.01;
             debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
