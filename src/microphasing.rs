@@ -223,7 +223,7 @@ impl ObservationMatrix {
         self.variants.drain(..k);
         debug!("drained!");
         let mask = 2u64.pow(self.ncols()) - 1;
-        for obs in Itertools::flatten(self.observations.values_mut()) {
+        for obs in Iterator::flatten(self.observations.values_mut()) {
             obs.haplotype &= mask;
         }
     }
@@ -238,13 +238,13 @@ impl ObservationMatrix {
         debug!("Extend variants!");
         debug!("New variants {}", k);
         if k > 0 {
-            for obs in Itertools::flatten(self.observations.values_mut()) {
+            for obs in Iterator::flatten(self.observations.values_mut()) {
                 obs.haplotype <<= k;
                 debug!("{}", String::from_utf8_lossy(obs.read.qname()));
                 debug!("{}", obs.haplotype)
             }
         }
-        for obs in Itertools::flatten(self.observations.values_mut()) {
+        for obs in Iterator::flatten(self.observations.values_mut()) {
             for (i, variant) in new_variants.iter().rev().enumerate() {
                 debug!("Checking new variant support in existing Reads");
                 obs.update_haplotype(i, variant, start_loss.contains(&variant.pos()))?;
@@ -262,10 +262,10 @@ impl ObservationMatrix {
             self.observations.len()
         );
         let mut observations = self.observations.split_off(&interval_end);
-        for obs in Itertools::flatten(observations.values_mut()) {
+        for obs in Iterator::flatten(observations.values_mut()) {
             debug!("Removed {}", String::from_utf8_lossy(obs.read.qname()));
         }
-        for obs in Itertools::flatten(self.observations.values_mut()) {
+        for obs in Iterator::flatten(self.observations.values_mut()) {
             debug!("Kept {}", String::from_utf8_lossy(obs.read.qname()));
         }
         if !reverse {
@@ -381,7 +381,7 @@ impl ObservationMatrix {
         let mut frame_depth = 0;
         // count haplotypes
         let mut haplotypes: BTreeMap<(usize, u64), usize> = BTreeMap::new();
-        for obs in Itertools::flatten(self.observations.values()) {
+        for obs in Iterator::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
             debug!("Read name: {}", String::from_utf8_lossy(obs.read.qname()));
             debug!("obs haplotype:  {}", obs.haplotype);
@@ -1110,7 +1110,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 debug!("WinStart {}, WinEnd {}", splice_side_offset, splice_end);
                 debug!("{}", old_offset + window_len);
                 // advance window to next position
-                let nvars = Itertools::flatten(
+                let nvars = Iterator::flatten(
                     variant_tree
                         .range(splice_side_offset..splice_end)
                         .map(|var| var.1),
@@ -1137,11 +1137,11 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         "variant range: {:?}",
                         variant_tree.range(old_end..splice_end)
                     );
-                    Itertools::flatten(variant_tree.range((old_end)..(splice_end)).map(|var| var.1))
+                    Iterator::flatten(variant_tree.range((old_end)..(splice_end)).map(|var| var.1))
                         .count()
                 // reverse orientation
                 } else {
-                    Itertools::flatten(
+                    Iterator::flatten(
                         variant_tree
                             .range(splice_side_offset..old_offset)
                             .map(|var| var.1),
@@ -1155,7 +1155,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 // if we advance the window (forward or reverse), we will delete all variants that drop out of the window bounds
                 // forward orientation
                 } else if splice_side_offset > old_offset {
-                    Itertools::flatten(
+                    Iterator::flatten(
                         variant_tree
                             .range(old_offset..splice_side_offset)
                             .map(|var| var.1),
@@ -1163,7 +1163,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     .count()
                 // reverse orientation
                 } else {
-                    Itertools::flatten(
+                    Iterator::flatten(
                         variant_tree
                             .range((splice_end)..old_end) //(old_offset + exon_window_len))
                             .map(|var| var.1),
@@ -1196,7 +1196,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                             splice_side_offset - (max_read_len - exon_window_len),
                             splice_side_offset + 1
                         );
-                        Itertools::flatten(
+                        Iterator::flatten(
                             read_tree
                                 .range(
                                     (splice_side_offset - (max_read_len - exon_window_len))
@@ -1208,7 +1208,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     }
                     // while advancing the window (reverse orientation), we only add reads that end in the range between old and new window end, so we don't count any read twice
                     else {
-                        Itertools::flatten(
+                        Iterator::flatten(
                             read_tree
                                 .range(
                                     (splice_side_offset - (max_read_len - exon_window_len))
@@ -1221,7 +1221,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 } else {
                     // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                     if offset == exon.start + current_exon_offset {
-                        Itertools::flatten(
+                        Iterator::flatten(
                             read_tree
                                 .range(
                                     (splice_side_offset - (max_read_len - exon_window_len))
@@ -1233,7 +1233,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                     }
                     // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                     else {
-                        Itertools::flatten(
+                        Iterator::flatten(
                             read_tree
                                 .range((splice_side_offset)..(splice_side_offset + 1))
                                 .map(|rec| rec.1),
@@ -1272,7 +1272,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
 
                     // collect variants
                     let variants = match transcript.strand {
-                        PhasingStrand::Reverse => Itertools::flatten(
+                        PhasingStrand::Reverse => Iterator::flatten(
                             variant_tree
                                 .range_mut(splice_side_offset..splice_end)
                                 .rev()
@@ -1280,7 +1280,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                         )
                         .skip(nvars - added_vars)
                         .collect_vec(),
-                        PhasingStrand::Forward => Itertools::flatten(
+                        PhasingStrand::Forward => Iterator::flatten(
                             variant_tree
                                 .range_mut(splice_side_offset..splice_end)
                                 .map(|var| var.1.clone()),

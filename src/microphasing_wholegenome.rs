@@ -161,7 +161,7 @@ impl ObservationMatrix {
         self.variants.drain(..k);
         debug!("drained!");
         let mask = 2u64.pow(self.ncols()) - 1;
-        for obs in Itertools::flatten(self.observations.values_mut()) {
+        for obs in Iterator::flatten(self.observations.values_mut()) {
             obs.haplotype &= mask;
         }
     }
@@ -172,11 +172,11 @@ impl ObservationMatrix {
         debug!("Extend variants!");
         debug!("New variants {}", k);
         if k > 0 {
-            for obs in Itertools::flatten(self.observations.values_mut()) {
+            for obs in Iterator::flatten(self.observations.values_mut()) {
                 obs.haplotype <<= k;
             }
         }
-        for obs in Itertools::flatten(self.observations.values_mut()) {
+        for obs in Iterator::flatten(self.observations.values_mut()) {
             for (i, variant) in new_variants.iter().rev().enumerate() {
                 obs.update_haplotype(i, variant)?;
             }
@@ -266,7 +266,7 @@ impl ObservationMatrix {
         let variants = self.variants.iter().collect_vec();
         // count haplotypes
         let mut haplotypes: VecMap<usize> = VecMap::new();
-        for obs in Itertools::flatten(self.observations.values()) {
+        for obs in Iterator::flatten(self.observations.values()) {
             debug!("obs {:?}", obs);
             *haplotypes.entry(obs.haplotype as usize).or_insert(0) += 1;
         }
@@ -536,7 +536,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             }
             debug!("Offset {}, old offset {}", offset, old_offset);
             // advance window to next position
-            let nvars = Itertools::flatten(
+            let nvars = Iterator::flatten(
                 variant_tree
                     .range(offset..(offset + window_len))
                     .map(|var| var.1),
@@ -548,7 +548,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 nvars
             // if we advance the window (forward or reverse), just the newly added variants are counted
             } else {
-                Itertools::flatten(
+                Iterator::flatten(
                     variant_tree
                         .range((old_offset + window_len)..(offset + window_len))
                         .map(|var| var.1),
@@ -560,7 +560,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             let deleted_vars = if offset == old_offset {
                 0
             } else {
-                Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
+                Iterator::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
             };
 
             debug!(
@@ -571,12 +571,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             let reads = {
                 // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
                 if offset == 0 {
-                    Itertools::flatten(read_tree.range(offset..(offset + 1)).map(|rec| rec.1))
+                    Iterator::flatten(read_tree.range(offset..(offset + 1)).map(|rec| rec.1))
                         .collect_vec()
                 }
                 // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
                 else {
-                    Itertools::flatten(read_tree.range(offset..(offset + 1)).map(|rec| rec.1))
+                    Iterator::flatten(read_tree.range(offset..(offset + 1)).map(|rec| rec.1))
                         .collect_vec()
                 }
             };
@@ -596,7 +596,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
                 }
 
                 // collect variants
-                let variants = Itertools::flatten(
+                let variants = Iterator::flatten(
                     variant_tree
                         .range_mut(offset..(offset + window_len))
                         .map(|var| var.1.clone()),
@@ -683,32 +683,32 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     //     }
     //     debug!("Offset {}, old offset {}", offset, old_offset);
     //     // advance window to next position
-    //     let nvars = Itertools::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
+    //     let nvars = Iterator::flatten(variant_tree.range(offset..(offset + window_len)).map(|var| var.1)).count();
     //     debug!("Variants in window: {}",nvars);
     //     // first window in the exon, all variants found are newly added
     //     let added_vars = if offset == old_offset {
     //         nvars
     //     // if we advance the window (forward or reverse), just the newly added variants are counted
     //     } else {
-    //         Itertools::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
+    //         Iterator::flatten(variant_tree.range((old_offset + window_len)..(offset + window_len)).map(|var| var.1)).count()
     //     };
     //
     //     // first window, no variants are deleted
     //     let deleted_vars = if offset == old_offset {
     //         0
     //     } else {
-    //         Itertools::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
+    //         Iterator::flatten(variant_tree.range(old_offset..offset).map(|var| var.1)).count()
     //     };
     //
     //     debug!("Offset: {} - max_read_len - window_len {}", offset, (max_read_len - window_len));
     //     let reads = {
     //         // at the first window of the exon, we add all reads (including those starting before the window start) that enclose the window
     //         if offset == 0 {
-    //             Itertools::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
+    //             Iterator::flatten(read_tree.range(offset..(offset+1)).map(|rec| rec.1)).collect_vec()
     //         }
     //         // while advancing the window, we only add reads that start in the range between old and new window, so we don't count any read twice
     //         else {
-    //             Itertools::flatten(read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1)).collect_vec()
+    //             Iterator::flatten(read_tree.range((offset-1)..(offset+1)).map(|rec| rec.1)).collect_vec()
     //         }
     //     };
     //
@@ -730,7 +730,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     //
     //
     //         // collect variants
-    //         let variants = Itertools::flatten(variant_tree.range_mut(offset..(offset + window_len)
+    //         let variants = Iterator::flatten(variant_tree.range_mut(offset..(offset + window_len)
     //             ).map(|var| var.1.clone())).skip(nvars - added_vars).collect_vec();
     //         debug!("Variants(after deleting and adding): {}", variants.len());
     //         // determine frameshifts
