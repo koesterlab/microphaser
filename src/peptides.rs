@@ -622,7 +622,10 @@ pub fn filter<F: io::Read, O: io::Write>(
             let n_peptide = np.as_bytes();
             let w_peptide = wp.as_bytes();
             let mut out_row = row.clone();
-            out_row.freq = ml as f64 * 0.01;
+            out_row.freq = match out_row.depth == 0 {
+                true => 0.0,
+                false => ml as f64 * 0.01,
+            };
             let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
             debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
             // check if the somatic peptide is present in the reference normal peptidome
