@@ -9,7 +9,7 @@ use bio::alphabets;
 use bio::io::fasta;
 use statrs::distribution::{Binomial, Discrete};
 
-use bio::stats::{LogProb};
+use bio::stats::LogProb;
 
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
@@ -17,7 +17,7 @@ use bincode::{deserialize_from, serialize_into};
 use crate::common::IDRecord;
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
-pub struct FilteredRecord{
+pub struct FilteredRecord {
     id: String,
     transcript: String,
     gene_id: String,
@@ -39,12 +39,12 @@ pub struct FilteredRecord{
     germline_positions: String,
     germline_aa_change: String,
     normal_sequence: String,
-    mutant_sequence: String
-} 
+    mutant_sequence: String,
+}
 
 impl FilteredRecord {
     pub fn create(idr: IDRecord, cred_interval: String) -> FilteredRecord {
-        FilteredRecord{
+        FilteredRecord {
             id: idr.id,
             transcript: idr.transcript,
             gene_id: idr.gene_id,
@@ -66,8 +66,8 @@ impl FilteredRecord {
             germline_positions: idr.germline_positions,
             germline_aa_change: idr.germline_aa_change,
             normal_sequence: idr.normal_sequence,
-            mutant_sequence: idr.mutant_sequence
-        } 
+            mutant_sequence: idr.mutant_sequence,
+        }
     }
 }
 
@@ -189,7 +189,7 @@ pub fn density(alt: &[f64], depth: &[u32], theta: f64) -> f64 {
     prob
 }
 
-pub fn prob_func(alt: &[f64], depth: &[u32]) -> BTreeMap<u64,f64> {
+pub fn prob_func(alt: &[f64], depth: &[u32]) -> BTreeMap<u64, f64> {
     debug!("alts {:?}, dp {:?}", alt, depth);
     let mut probabilities = BTreeMap::new();
     for t in 0..101 {
@@ -388,21 +388,30 @@ pub fn filter<F: io::Read, O: io::Write>(
                 //current != current_variant { //som_pos != current_variant {
                 debug!("Printing records");
                 for (key, entries) in &records {
-                    let prob_map = prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
-                    let ml = *prob_map.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
+                    let prob_map =
+                        prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
+                    let ml = *prob_map
+                        .iter()
+                        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                        .unwrap()
+                        .0;
                     // integral over theta from 0 to 1 - used for normalisation
                     let r = LogProb::ln_simpsons_integrate_exp(
                         |_, v| {
-                            let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
+                            let dens = density(
+                                &frequencies.get(key).unwrap(),
+                                &depth.get(key).unwrap(),
+                                v,
+                            );
                             LogProb(dens.ln())
-                        }, 
-                        0.0, 
-                        1.0, 
-                        99
+                        },
+                        0.0,
+                        1.0,
+                        99,
                     );
 
                     // find interval a-b which is the .95% credible interval for theta
-                    // initialize values - binary-search-like, starting around the ml value 
+                    // initialize values - binary-search-like, starting around the ml value
                     let mut a_old = ml as f64 * 0.01;
                     let mut b_old = ml as f64 * 0.01;
                     let mut a = match ml < 10 {
@@ -431,7 +440,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                                 true => 1.0,
                                 false => (b + 0.1),
                             };
-                        } 
+                        }
                         if p > LogProb(0.96f64.ln()) {
                             a += (a_old - a) / 2.0;
                             b -= (b - b_old) / 2.0;
@@ -439,12 +448,16 @@ pub fn filter<F: io::Read, O: io::Write>(
                         // simpson's rule over [a, b], theta is normalized by the probability of the interval [0, 1].
                         p = LogProb::ln_simpsons_integrate_exp(
                             |_, v| {
-                                let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
+                                let dens = density(
+                                    &frequencies.get(key).unwrap(),
+                                    &depth.get(key).unwrap(),
+                                    v,
+                                );
                                 LogProb::from(dens.ln()) - r
-                            }, 
-                            a, 
-                            b, 
-                            11
+                            },
+                            a,
+                            b,
+                            11,
                         );
                         if p >= LogProb(0.95f64.ln()) && p < LogProb(0.96f64.ln()) {
                             break;
@@ -460,7 +473,8 @@ pub fn filter<F: io::Read, O: io::Write>(
                             true => 0.0,
                             false => ml as f64 * 0.01,
                         };
-                        let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
+                        let filtered_row =
+                            FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
                         debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
                         // check if the somatic peptide is present in the reference normal peptidome
                         match ref_set.contains(n_peptide) {
@@ -477,7 +491,11 @@ pub fn filter<F: io::Read, O: io::Write>(
                                 );
                             }
                             false => {
-                                fasta_writer.write(&filtered_row.id.to_string(), None, &n_peptide)?;
+                                fasta_writer.write(
+                                    &filtered_row.id.to_string(),
+                                    None,
+                                    &n_peptide,
+                                )?;
                                 //if we don't have a matching normal, do not write an empty entry to the output
                                 if !w_peptide.is_empty() {
                                     normal_writer.write(
@@ -554,16 +572,20 @@ pub fn filter<F: io::Read, O: io::Write>(
     for (key, entries) in &records {
         //let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
         let prob_map = prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
-        let ml = *prob_map.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
+        let ml = *prob_map
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .0;
 
         let r = LogProb::ln_simpsons_integrate_exp(
             |_, v| {
                 let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
                 LogProb(dens.ln())
-            }, 
-            0.0, 
-            1.0, 
-            99 
+            },
+            0.0,
+            1.0,
+            99,
         );
 
         let mut a_r = ml as f64 * 0.01;
@@ -597,7 +619,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                     true => 1.0,
                     false => b + ((b_r - b) / 2.0),
                 };
-            } 
+            }
             if p > LogProb(0.96f64.ln()) {
                 a_l = a;
                 a += (a_r - a) / 2.0;
@@ -608,10 +630,10 @@ pub fn filter<F: io::Read, O: io::Write>(
                 |_, v| {
                     let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
                     LogProb::from(dens.ln()) - r
-                }, 
-                a, 
-                b, 
-                11
+                },
+                a,
+                b,
+                11,
             );
             if p >= LogProb(0.95f64.ln()) && p < LogProb(0.96f64.ln()) {
                 break;
