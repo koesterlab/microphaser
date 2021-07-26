@@ -7,22 +7,26 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use alphabets::dna;
 use bio::alphabets;
 use bio::io::fasta;
+use statrs::distribution::{Binomial, Discrete};
+
+use bio::stats::LogProb;
 
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
 
 use crate::common::IDRecord;
 
-/* #[derive(Deserialize, debug, Serialize, Clone)]
-pub struct IDRecord{
+#[derive(Deserialize, Debug, Serialize, Clone)]
+pub struct FilteredRecord {
     id: String,
     transcript: String,
     gene_id: String,
     gene_name: String,
     chrom: String,
-    offset: u32,
-    frame: u32,
+    offset: u64,
+    frame: u64,
     freq: f64,
+    credible_interval: String,
     depth: u32,
     nvar: u32,
     nsomatic: u32,
@@ -35,8 +39,37 @@ pub struct IDRecord{
     germline_positions: String,
     germline_aa_change: String,
     normal_sequence: String,
-    mutant_sequence: String
-} */
+    mutant_sequence: String,
+}
+
+impl FilteredRecord {
+    pub fn create(idr: IDRecord, cred_interval: String) -> FilteredRecord {
+        FilteredRecord {
+            id: idr.id,
+            transcript: idr.transcript,
+            gene_id: idr.gene_id,
+            gene_name: idr.gene_name,
+            chrom: idr.chrom,
+            offset: idr.offset,
+            frame: idr.frame,
+            freq: idr.freq,
+            credible_interval: cred_interval,
+            depth: idr.depth,
+            nvar: idr.nvar,
+            nsomatic: idr.nsomatic,
+            nvariant_sites: idr.nvariant_sites,
+            nsomvariant_sites: idr.nsomvariant_sites,
+            strand: idr.strand,
+            variant_sites: idr.variant_sites,
+            somatic_positions: idr.somatic_positions,
+            somatic_aa_change: idr.somatic_aa_change,
+            germline_positions: idr.germline_positions,
+            germline_aa_change: idr.germline_aa_change,
+            normal_sequence: idr.normal_sequence,
+            mutant_sequence: idr.mutant_sequence,
+        }
+    }
+}
 
 fn make_pairs() -> HashMap<&'static [u8], &'static [u8]> {
     // data structure for mapping codons to amino acids
@@ -139,6 +172,38 @@ pub fn build<F: io::Read, O: io::Write>(
     serialize_into(binary_writer, &ref_set)?;
     debug!("Reference is done!");
     Ok(())
+}
+
+pub fn density(alt: &[f64], depth: &[u32], theta: f64) -> f64 {
+    debug!("alts {:?}, dp {:?}", alt, depth);
+    //let mut probabilities = BTreeMap::new();
+    //for t in 0..101 {
+    //let theta = t as f64 * 0.01;
+    let mut i = 0;
+    let mut prob = 1.0;
+    while i < alt.len() {
+        let bin = Binomial::new(theta, depth[i] as u64).unwrap();
+        prob *= bin.pmf(alt[i].round() as u64);
+        i += 1;
+    }
+    prob
+}
+
+pub fn prob_func(alt: &[f64], depth: &[u32]) -> BTreeMap<u64, f64> {
+    debug!("alts {:?}, dp {:?}", alt, depth);
+    let mut probabilities = BTreeMap::new();
+    for t in 0..101 {
+        let theta = t as f64 * 0.01;
+        let mut i = 0;
+        let mut prob = 1.0;
+        while i < alt.len() {
+            let bin = Binomial::new(theta, depth[i] as u64).unwrap();
+            prob *= bin.pmf(alt[i].round() as u64);
+            i += 1;
+        }
+        probabilities.insert(t, prob);
+    }
+    probabilities
 }
 
 pub fn compute_ml(alt_depths: &[f64], depth: &[u32]) -> Result<f64, Box<dyn Error>> {
@@ -323,42 +388,123 @@ pub fn filter<F: io::Read, O: io::Write>(
                 //current != current_variant { //som_pos != current_variant {
                 debug!("Printing records");
                 for (key, entries) in &records {
-                    let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap())
-                        .unwrap();
+                    let prob_map =
+                        prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
+                    let ml = *prob_map
+                        .iter()
+                        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                        .unwrap()
+                        .0;
+                    // integral over theta from 0 to 1 - used for normalisation
+                    let r = LogProb::ln_simpsons_integrate_exp(
+                        |_, v| {
+                            let dens = density(
+                                &frequencies.get(key).unwrap(),
+                                &depth.get(key).unwrap(),
+                                v,
+                            );
+                            LogProb(dens.ln())
+                        },
+                        0.0,
+                        1.0,
+                        99,
+                    );
+
+                    // find interval a-b which is the .95% credible interval for theta
+                    // initialize values - binary-search-like, starting around the ml value
+                    let mut a_old = ml as f64 * 0.01;
+                    let mut b_old = ml as f64 * 0.01;
+                    let mut a = match ml < 10 {
+                        true => 0.0,
+                        false => (ml - 10) as f64 * 0.01,
+                    };
+                    let mut b = match ml > 90 {
+                        true => 1.0,
+                        false => (ml + 10) as f64 * 0.01,
+                    };
+                    let mut p = LogProb(0.0f64.ln());
+                    // iterating to find the correct interval - max iterations: 50
+                    let mut counter = 0;
+                    loop {
+                        if counter == 50 {
+                            break;
+                        }
+                        if p < LogProb(0.95f64.ln()) {
+                            a_old = a;
+                            a = match a < 0.1 {
+                                true => 0.0,
+                                false => (a - 0.1),
+                            };
+                            b_old = b;
+                            b = match b > 0.9 {
+                                true => 1.0,
+                                false => (b + 0.1),
+                            };
+                        }
+                        if p > LogProb(0.96f64.ln()) {
+                            a += (a_old - a) / 2.0;
+                            b -= (b - b_old) / 2.0;
+                        }
+                        // simpson's rule over [a, b], theta is normalized by the probability of the interval [0, 1].
+                        p = LogProb::ln_simpsons_integrate_exp(
+                            |_, v| {
+                                let dens = density(
+                                    &frequencies.get(key).unwrap(),
+                                    &depth.get(key).unwrap(),
+                                    v,
+                                );
+                                LogProb::from(dens.ln()) - r
+                            },
+                            a,
+                            b,
+                            11,
+                        );
+                        if p >= LogProb(0.95f64.ln()) && p < LogProb(0.96f64.ln()) {
+                            break;
+                        }
+                        counter += 1;
+                    }
+
                     for (row, np, wp) in entries {
                         let n_peptide = np.as_bytes();
                         let w_peptide = wp.as_bytes();
                         let mut out_row = row.clone();
                         out_row.freq = match out_row.depth == 0 {
                             true => 0.0,
-                            false => ml,
+                            false => ml as f64 * 0.01,
                         };
+                        let filtered_row =
+                            FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
                         debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
                         // check if the somatic peptide is present in the reference normal peptidome
                         match ref_set.contains(n_peptide) {
                             true => {
                                 removed_fasta_writer.write(
-                                    &out_row.id.to_string(),
+                                    &filtered_row.id.to_string(),
                                     None,
                                     &n_peptide,
                                 )?;
-                                removed_writer.serialize(out_row)?;
+                                removed_writer.serialize(filtered_row)?;
                                 debug!(
                                     "Removed Peptide due to germline similar: {}",
                                     &String::from_utf8_lossy(n_peptide)
                                 );
                             }
                             false => {
-                                fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
+                                fasta_writer.write(
+                                    &filtered_row.id.to_string(),
+                                    None,
+                                    &n_peptide,
+                                )?;
                                 //if we don't have a matching normal, do not write an empty entry to the output
                                 if !w_peptide.is_empty() {
                                     normal_writer.write(
-                                        &out_row.id.to_string(),
+                                        &filtered_row.id.to_string(),
                                         None,
                                         &w_peptide,
                                     )?;
                                 }
-                                tsv_writer.serialize(out_row)?;
+                                tsv_writer.serialize(filtered_row)?;
                             }
                         }
                     }
@@ -424,30 +570,103 @@ pub fn filter<F: io::Read, O: io::Write>(
     }
     debug!("Printing records");
     for (key, entries) in &records {
-        let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
+        //let ml = compute_ml(&frequencies.get(key).unwrap(), &depth.get(key).unwrap()).unwrap();
+        let prob_map = prob_func(&frequencies.get(key).unwrap(), &depth.get(key).unwrap());
+        let ml = *prob_map
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .0;
+
+        let r = LogProb::ln_simpsons_integrate_exp(
+            |_, v| {
+                let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
+                LogProb(dens.ln())
+            },
+            0.0,
+            1.0,
+            99,
+        );
+
+        let mut a_r = ml as f64 * 0.01;
+        let mut a_l = 0.0;
+        let mut b_r = 1.0;
+        let mut b_l = ml as f64 * 0.01;
+        let mut a = match ml < 10 {
+            true => 0.0,
+            false => (ml - 10) as f64 * 0.01,
+        };
+        let mut b = match ml > 90 {
+            true => 1.0,
+            false => (ml + 10) as f64 * 0.01,
+        };
+
+        let mut p = LogProb(0.0f64.ln());
+
+        let mut counter = 0;
+        loop {
+            if counter == 10 {
+                break;
+            }
+            if p < LogProb(0.95f64.ln()) {
+                a_r = a;
+                a = match a < 0.1 {
+                    true => 0.0,
+                    false => a - ((a - a_l) / 2.0),
+                };
+                b_l = b;
+                b = match b > 0.9 {
+                    true => 1.0,
+                    false => b + ((b_r - b) / 2.0),
+                };
+            }
+            if p > LogProb(0.96f64.ln()) {
+                a_l = a;
+                a += (a_r - a) / 2.0;
+                b_r = b;
+                b -= (b - b_l) / 2.0;
+            }
+            p = LogProb::ln_simpsons_integrate_exp(
+                |_, v| {
+                    let dens = density(&frequencies.get(key).unwrap(), &depth.get(key).unwrap(), v);
+                    LogProb::from(dens.ln()) - r
+                },
+                a,
+                b,
+                11,
+            );
+            if p >= LogProb(0.95f64.ln()) && p < LogProb(0.96f64.ln()) {
+                break;
+            }
+            counter += 1;
+        }
         for (row, np, wp) in entries {
             let n_peptide = np.as_bytes();
             let w_peptide = wp.as_bytes();
             let mut out_row = row.clone();
-            out_row.freq = ml;
+            out_row.freq = match out_row.depth == 0 {
+                true => 0.0,
+                false => ml as f64 * 0.01,
+            };
+            let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
             debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(n_peptide) {
                 true => {
-                    removed_fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
-                    removed_writer.serialize(out_row)?;
+                    removed_fasta_writer.write(&filtered_row.id.to_string(), None, &n_peptide)?;
+                    removed_writer.serialize(filtered_row)?;
                     debug!(
                         "Removed Peptide due to germline similar: {}",
                         &String::from_utf8_lossy(n_peptide)
                     );
                 }
                 false => {
-                    fasta_writer.write(&out_row.id.to_string(), None, &n_peptide)?;
+                    fasta_writer.write(&filtered_row.id.to_string(), None, &n_peptide)?;
                     //if we don't have a matching normal, do not write an empty entry to the output
                     if !w_peptide.is_empty() {
-                        normal_writer.write(&out_row.id.to_string(), None, &w_peptide)?;
+                        normal_writer.write(&filtered_row.id.to_string(), None, &w_peptide)?;
                     }
-                    tsv_writer.serialize(out_row)?;
+                    tsv_writer.serialize(filtered_row)?;
                 }
             }
         }
