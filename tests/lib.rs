@@ -8,7 +8,7 @@ use std::process::Command;
 // use std::process;
 use std::io;
 
-use hyper::Client;
+use hyper::client::Client;
 
 fn test_output(result: &str, expected: &str) {
     assert!(Command::new("diff")
