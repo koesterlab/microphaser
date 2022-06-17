@@ -8,6 +8,8 @@ use std::process::Command;
 // use std::process;
 use std::io;
 
+use hyper::Client;
+
 fn test_output(result: &str, expected: &str) {
     assert!(Command::new("diff")
         .arg(result)
@@ -79,7 +81,7 @@ fn microphaser_build(cmd: &str) {
 fn download_reference(chrom: &str) -> String {
     let reference = format!("tests/resources/{}.fa", chrom);
     if !Path::new(&reference).exists() {
-        let client = hyper::Client::new();
+        let client = Client::new();
         let res = client
             .get(&format!(
                 "http://hgdownload.cse.ucsc.edu/goldenpath/hg38/chromosomes/{}.fa.gz",
