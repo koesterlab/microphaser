@@ -9,6 +9,7 @@ use std::process::Command;
 use std::io;
 
 use hyper::client::Client;
+use hyper::Uri;
 
 fn test_output(result: &str, expected: &str) {
     assert!(Command::new("diff")
@@ -83,12 +84,11 @@ fn download_reference(chrom: &str) -> String {
     if !Path::new(&reference).exists() {
         let client = Client::new();
         let res = client
-            .get(&format!(
+            .get(Uri::from_static(&format!(
                 "http://hgdownload.cse.ucsc.edu/goldenpath/hg38/chromosomes/{}.fa.gz",
                 chrom
-            ))
-            .send()
-            .unwrap();
+            )))
+            .await?;
         let mut reference_stream = flate2::read::GzDecoder::new(res).unwrap();
         let mut reference_file = fs::File::create(&reference).unwrap();
 
