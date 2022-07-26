@@ -86,6 +86,9 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .from_path(matches.value_of("tsv").unwrap())?;
     debug!("Start");
     let window_len = value_t!(matches, "window-len", u64)?;
+
+    let unsupported_alleles_warning_only = matches.is_present("unsupported-alleles-warning-only");
+
     microphasing::phase(
         &mut fasta_reader,
         &mut gtf_reader,
@@ -95,6 +98,7 @@ pub fn run_somatic(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut tsv_writer,
         &mut normal_writer,
         window_len,
+        unsupported_alleles_warning_only,
     )
 }
 
@@ -125,6 +129,9 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u64)?;
+
+    let unsupported_alleles_warning_only = matches.is_present("unsupported-alleles-warning-only");
+
     normal_microphasing::phase(
         &mut fasta_reader,
         &mut gtf_reader,
@@ -133,6 +140,7 @@ pub fn run_normal(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut tsv_writer,
         &mut fasta_writer,
         window_len,
+        unsupported_alleles_warning_only,
     )
 }
 
@@ -233,6 +241,9 @@ pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .from_path(matches.value_of("tsv").unwrap())?;
 
     let window_len = value_t!(matches, "window-len", u64)?;
+
+    let unsupported_alleles_warning_only = matches.is_present("unsupported-alleles-warning-only");
+
     microphasing_wholegenome::phase(
         &mut fasta_reader,
         bcf_reader,
@@ -242,6 +253,7 @@ pub fn run_wg(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         &mut normal_writer,
         window_len,
         only_relevant,
+        unsupported_alleles_warning_only,
     )
 }
 
