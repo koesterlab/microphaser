@@ -689,7 +689,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         variant_buffer.fetch(&gene.chrom.as_bytes(), gene.start(), gene.end())?;
     let _vars = variant_buffer
         .iter_mut()
-        .map(|rec| variant_tree.insert(rec.pos() as u64, Variant::new(rec, unsupported_alleles_warning_only).unwrap()))
+        .map(|rec| {
+            variant_tree.insert(
+                rec.pos() as u64,
+                Variant::new(rec, unsupported_alleles_warning_only).unwrap(),
+            )
+        })
         .collect_vec();
 
     for transcript in &gene.transcripts {

@@ -3,13 +3,12 @@ use std::ops::Deref;
 
 use bio_types::strand::Strand;
 
+use itertools::Itertools;
 use std::error::Error;
 use std::str;
 use std::str::FromStr;
-use itertools::Itertools;
 
 use rust_htslib::{bcf, bcf::record::Numeric};
-
 
 use std::borrow::ToOwned;
 
@@ -68,7 +67,10 @@ impl Variant {
         }
     }
 
-    pub fn new(rec: &mut bcf::Record, unsupported_alleles_warning_only: bool) -> Result<Vec<Self>, Box<dyn Error>> {
+    pub fn new(
+        rec: &mut bcf::Record,
+        unsupported_alleles_warning_only: bool,
+    ) -> Result<Vec<Self>, Box<dyn Error>> {
         let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
 
         let ann = Annotation::new(rec);
@@ -81,14 +83,12 @@ impl Variant {
         let mut _alleles = Vec::with_capacity(alleles.len() - 1);
         for a in &alleles[1..] {
             if a.len() == 1 && refallele.len() > 1 {
-                _alleles.push(
-                    Variant::Deletion {
-                        pos,
-                        len: (refallele.len() - 1) as u64,
-                        is_germline,
-                        prot_change: prot_change.to_owned(),
-                    }
-                );
+                _alleles.push(Variant::Deletion {
+                    pos,
+                    len: (refallele.len() - 1) as u64,
+                    is_germline,
+                    prot_change: prot_change.to_owned(),
+                });
             } else if a.len() > 1 && refallele.len() == 1 {
                 if a.starts_with(b"<") {
                     if a == &("<DEL>".as_bytes()) {
@@ -113,31 +113,31 @@ impl Variant {
                                         None => {
                                             err_msg = format!("Found no 'SVLEN' info tag for <DEL> alternative allele on contig {contig} at pos {pos}");
                                             Err(err_msg.as_str())
-                                        },
+                                        }
                                     }
                                 }
-                            },
+                            }
                             Err(rust_htslib_error) => {
                                 err_msg = format!("Encountered rust_htslib error when trying to access 'SVLEN' tag for '<DEL>' alternative allele on contig {contig} at position {pos}: {rust_htslib_error}");
                                 Err(err_msg.as_str())
-                            },
+                            }
                             Ok(None) => {
                                 err_msg = format!("Found no 'SVLEN' info tag for <DEL> alternative allele at chr {contig} pos {pos}");
                                 Err(err_msg.as_str())
-                            },
+                            }
                         };
                         match svlen {
                             Ok(l) => {
-                                _alleles.push(
-                                    Variant::Deletion {
-                                        pos,
-                                        len: l,
-                                        is_germline,
-                                        prot_change: prot_change.to_owned(),
-                                    }
-                                );
-                            },
-                            Err(msg) => Variant::warn_or_error(msg, unsupported_alleles_warning_only),
+                                _alleles.push(Variant::Deletion {
+                                    pos,
+                                    len: l,
+                                    is_germline,
+                                    prot_change: prot_change.to_owned(),
+                                });
+                            }
+                            Err(msg) => {
+                                Variant::warn_or_error(msg, unsupported_alleles_warning_only)
+                            }
                         };
                     } else {
                         Variant::warn_or_error(
@@ -146,15 +146,13 @@ impl Variant {
                         )
                     }
                 } else {
-                    _alleles.push(
-                        Variant::Insertion {
-                            pos,
-                            seq: a[0..].to_owned(),
-                            len: (a.len() - 1) as u64,
-                            is_germline,
-                            prot_change: prot_change.to_owned(),
-                        }
-                    );
+                    _alleles.push(Variant::Insertion {
+                        pos,
+                        seq: a[0..].to_owned(),
+                        len: (a.len() - 1) as u64,
+                        is_germline,
+                        prot_change: prot_change.to_owned(),
+                    });
                 }
             } else if a.len() == 1 && refallele.len() == 1 {
                 _alleles.push(Variant::SNV {

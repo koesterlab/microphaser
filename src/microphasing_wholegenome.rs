@@ -522,7 +522,12 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             variant_buffer.fetch(&sequence.name.as_bytes(), chunk, chunk + 1000000)?;
         let _vars = variant_buffer
             .iter_mut()
-            .map(|rec| variant_tree.insert(rec.pos() as u64, Variant::new(rec, unsupported_alleles_warning_only).unwrap()))
+            .map(|rec| {
+                variant_tree.insert(
+                    rec.pos() as u64,
+                    Variant::new(rec, unsupported_alleles_warning_only).unwrap(),
+                )
+            })
             .collect_vec();
 
         let mut observations = ObservationMatrix::new();
