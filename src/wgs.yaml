@@ -45,3 +45,9 @@ args:
       value_name: FILE
       default_value: "normal.fasta"
       help: Output wildtype haplotypes of mutated sequences.
+  - unsupported-alleles-warning-only:
+      long: unsupported-allele-warning-only
+      short: u
+      help: When encountering an unsupported allele, microphaser currently
+        throws an errors and exits. To skip unsupported alleles with only a
+        warning, instead, please set this flag.

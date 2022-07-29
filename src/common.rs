@@ -3,11 +3,12 @@ use std::ops::Deref;
 
 use bio_types::strand::Strand;
 
+use itertools::Itertools;
 use std::error::Error;
 use std::str;
 use std::str::FromStr;
 
-use rust_htslib::bcf;
+use rust_htslib::{bcf, bcf::record::Numeric};
 
 use std::borrow::ToOwned;
 
@@ -58,12 +59,24 @@ pub enum Variant {
 }
 
 impl Variant {
-    pub fn new(rec: &mut bcf::Record) -> Result<Vec<Self>, Box<dyn Error>> {
+    fn warn_or_error(msg: &str, unsupported_alleles_warning_only: bool) {
+        if unsupported_alleles_warning_only {
+            warn!("{}", msg)
+        } else {
+            error!("{}", msg)
+        }
+    }
+
+    pub fn new(
+        rec: &mut bcf::Record,
+        unsupported_alleles_warning_only: bool,
+    ) -> Result<Vec<Self>, Box<dyn Error>> {
         let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
 
         let ann = Annotation::new(rec);
 
         let prot_change = ann.prot_change.as_str();
+        let contig = rec.rid().ok_or_else(|| "Could not handle rec.rid().")?;
         let pos = rec.pos() as u64;
         let alleles = rec.alleles();
         let refallele = alleles[0];
@@ -77,13 +90,70 @@ impl Variant {
                     prot_change: prot_change.to_owned(),
                 });
             } else if a.len() > 1 && refallele.len() == 1 {
-                _alleles.push(Variant::Insertion {
-                    pos,
-                    seq: a[0..].to_owned(),
-                    len: (a.len() - 1) as u64,
-                    is_germline,
-                    prot_change: prot_change.to_owned(),
-                });
+                if a.starts_with(b"<") {
+                    if a == &("<DEL>".as_bytes()) {
+                        let err_msg: String;
+                        let svlen = match rec.info(b"SVLEN").integer() {
+                            Ok(Some(svlens)) => {
+                                let svlens = svlens
+                                    .iter()
+                                    .map(|l| {
+                                        if !l.is_missing() {
+                                            Some(l.abs() as u64)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect_vec();
+                                if svlens.len() > 1 {
+                                    Err("microphaser does not handle multiallelic records. Please normalize, e.g. with `bcftools norm -m-`.")
+                                } else {
+                                    match svlens[0] {
+                                        Some(length) => Ok(length),
+                                        None => {
+                                            err_msg = format!("Found no 'SVLEN' info tag for <DEL> alternative allele on contig {contig} at pos {pos}");
+                                            Err(err_msg.as_str())
+                                        }
+                                    }
+                                }
+                            }
+                            Err(rust_htslib_error) => {
+                                err_msg = format!("Encountered rust_htslib error when trying to access 'SVLEN' tag for '<DEL>' alternative allele on contig {contig} at position {pos}: {rust_htslib_error}");
+                                Err(err_msg.as_str())
+                            }
+                            Ok(None) => {
+                                err_msg = format!("Found no 'SVLEN' info tag for <DEL> alternative allele at chr {contig} pos {pos}");
+                                Err(err_msg.as_str())
+                            }
+                        };
+                        match svlen {
+                            Ok(l) => {
+                                _alleles.push(Variant::Deletion {
+                                    pos,
+                                    len: l,
+                                    is_germline,
+                                    prot_change: prot_change.to_owned(),
+                                });
+                            }
+                            Err(msg) => {
+                                Variant::warn_or_error(msg, unsupported_alleles_warning_only)
+                            }
+                        };
+                    } else {
+                        Variant::warn_or_error(
+                            format!("Alternative allele type '{a:?}' not yet supported, but found on contig {contig} at position {pos}. Please open a respective pull request or issue at https://github.com/koesterlab/microphaser").as_str(),
+                            unsupported_alleles_warning_only
+                        )
+                    }
+                } else {
+                    _alleles.push(Variant::Insertion {
+                        pos,
+                        seq: a[0..].to_owned(),
+                        len: (a.len() - 1) as u64,
+                        is_germline,
+                        prot_change: prot_change.to_owned(),
+                    });
+                }
             } else if a.len() == 1 && refallele.len() == 1 {
                 _alleles.push(Variant::SNV {
                     pos,

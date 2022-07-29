@@ -25,3 +25,7 @@ args:
       short: l
       default_value: "9"
       help: length of output peptides
+  - verbose:
+      long: verbose
+      short: v
+      help: Verbose output.
