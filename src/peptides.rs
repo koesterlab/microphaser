@@ -14,9 +14,11 @@ use bio::stats::LogProb;
 extern crate bincode;
 use bincode::{deserialize_from, serialize_into};
 
+use struct_field_names_as_array::FieldNamesAsArray;
+
 use crate::common::IDRecord;
 
-#[derive(Deserialize, Debug, Serialize, Clone)]
+#[derive(Deserialize, Debug, Serialize, Clone, FieldNamesAsArray)]
 pub struct FilteredRecord {
     id: String,
     transcript: String,
@@ -241,6 +243,10 @@ pub fn filter<F: io::Read, O: io::Write>(
         BTreeMap::new();
     let mut seen_peptides = HashSet::new();
     let mut stop_gained = BTreeMap::new();
+    // we manually write out the TSV header here, to ensure that we always
+    // have a header, even when no records remain after filtering and
+    // the file otherwise remains empty
+    tsv_writer.write_record(FilteredRecord::FIELD_NAMES_AS_ARRAY)?;
     // get peptide info from info.tsv table (including sequences)
     for record in tsv_reader.records() {
         let record = record?;
