@@ -191,6 +191,7 @@ pub fn run_filtering(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let mut tsv_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
+        .has_headers(false)
         .from_path(matches.value_of("tsvoutput").unwrap())?;
     let mut removed_writer = csv::WriterBuilder::new()
         .delimiter(b'\t')
