@@ -47,7 +47,12 @@ pub struct FilteredRecord {
 }
 
 impl FilteredRecord {
-    pub fn create(idr: IDRecord, cred_interval: String, normal_peptide: String, tumor_peptide: String) -> FilteredRecord {
+    pub fn create(
+        idr: IDRecord,
+        cred_interval: String,
+        normal_peptide: String,
+        tumor_peptide: String,
+    ) -> FilteredRecord {
         FilteredRecord {
             id: idr.id,
             transcript: idr.transcript,
@@ -483,9 +488,16 @@ pub fn filter<F: io::Read, O: io::Write>(
                             true => 0.0,
                             false => ml as f64 * 0.01,
                         };
-                        let filtered_row =
-                            FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b), normal_p.clone(), tumor_p.clone());
-                        debug!("Handling Peptide {}", &String::from_utf8_lossy(tumor_peptide));
+                        let filtered_row = FilteredRecord::create(
+                            out_row,
+                            format!("{:.2}-{:.2}", a, b),
+                            normal_p.clone(),
+                            tumor_p.clone(),
+                        );
+                        debug!(
+                            "Handling Peptide {}",
+                            &String::from_utf8_lossy(tumor_peptide)
+                        );
                         // check if the somatic peptide is present in the reference normal peptidome
                         match ref_set.contains(tumor_peptide) {
                             true => {
@@ -658,12 +670,24 @@ pub fn filter<F: io::Read, O: io::Write>(
                 true => 0.0,
                 false => ml as f64 * 0.01,
             };
-            let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b), normal_pep.clone(), tumor_pep.clone());
-            debug!("Handling Peptide {}", &String::from_utf8_lossy(tumor_peptide));
+            let filtered_row = FilteredRecord::create(
+                out_row,
+                format!("{:.2}-{:.2}", a, b),
+                normal_pep.clone(),
+                tumor_pep.clone(),
+            );
+            debug!(
+                "Handling Peptide {}",
+                &String::from_utf8_lossy(tumor_peptide)
+            );
             // check if the somatic peptide is present in the reference normal peptidome
             match ref_set.contains(tumor_peptide) {
                 true => {
-                    removed_fasta_writer.write(&filtered_row.id.to_string(), None, &tumor_peptide)?;
+                    removed_fasta_writer.write(
+                        &filtered_row.id.to_string(),
+                        None,
+                        &tumor_peptide,
+                    )?;
                     removed_writer.serialize(filtered_row)?;
                     debug!(
                         "Removed Peptide due to germline similar: {}",
