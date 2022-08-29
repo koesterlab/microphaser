@@ -1,6 +1,6 @@
 [package]
 name = "microphaser"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Jan Forster <jan.forster@uk-essen.de>", "Johannes Köster <johannes.koester@tu-dortmund.de>", "David Lähnemann <david.laehnemann@hhu.de>"]
 edition = "2018"
 
