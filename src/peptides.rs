@@ -42,10 +42,12 @@ pub struct FilteredRecord {
     germline_aa_change: String,
     normal_sequence: String,
     mutant_sequence: String,
+    normal_peptide: String,
+    tumor_peptide: String,
 }
 
 impl FilteredRecord {
-    pub fn create(idr: IDRecord, cred_interval: String) -> FilteredRecord {
+    pub fn create(idr: IDRecord, cred_interval: String, normal_peptide: String, tumor_peptide: String) -> FilteredRecord {
         FilteredRecord {
             id: idr.id,
             transcript: idr.transcript,
@@ -69,6 +71,8 @@ impl FilteredRecord {
             germline_aa_change: idr.germline_aa_change,
             normal_sequence: idr.normal_sequence,
             mutant_sequence: idr.mutant_sequence,
+            normal_peptide: normal_peptide,
+            tumor_peptide: tumor_peptide,
         }
     }
 }
@@ -266,16 +270,16 @@ pub fn filter<F: io::Read, O: io::Write>(
         };
         let orientation = row.strand.as_str();
         let offset = row.offset as usize;
-        let mt_seq = &row.mutant_sequence.as_bytes();
-        let wt_seq = &row.normal_sequence.as_bytes();
+        let tumor_seq = &row.mutant_sequence.as_bytes();
+        let normal_seq = &row.normal_sequence.as_bytes();
         let frame = match id.ends_with('F') {
             true => 1,
             false => -1,
         };
-        let neopeptide = to_protein(mt_seq, frame).unwrap();
-        let wt_peptide = match wt_seq.is_empty() {
+        let tumor_peptide = to_protein(tumor_seq, frame).unwrap();
+        let normal_peptide = match normal_seq.is_empty() {
             true => vec![],
-            false => to_protein(wt_seq, frame).unwrap(),
+            false => to_protein(normal_seq, frame).unwrap(),
         };
 
         let mut i = 0;
@@ -293,31 +297,31 @@ pub fn filter<F: io::Read, O: io::Write>(
                 continue;
             }
         }
-        if neopeptide.contains(&"X".as_bytes()[0])
+        if tumor_peptide.contains(&"X".as_bytes()[0])
             && ((row.freq - 1.0).abs() < f64::EPSILON || row.frame > 0)
         {
             let tuple = (row.transcript.clone(), row.frame);
             stop_gained.insert(tuple, offset);
         }
-        let current_neo = neopeptide.clone();
+        let current_tumor_peptide = tumor_peptide.clone();
         // iterate over the peptide in variable-length windows
-        while i + peptide_length <= current_neo.len() {
-            let n_peptide = &current_neo[i..(i + peptide_length)];
+        while i + peptide_length <= current_tumor_peptide.len() {
+            let tumor_pep = &current_tumor_peptide[i..(i + peptide_length)];
             // Terminate at stop codon
-            if n_peptide.contains(&"X".as_bytes()[0]) {
+            if tumor_pep.contains(&"X".as_bytes()[0]) {
                 break;
             }
-            let w_peptide = match wt_peptide.len() >= i + peptide_length {
-                true => &wt_peptide[i..(i + peptide_length)],
-                false => &wt_peptide,
+            let normal_pep = match normal_peptide.len() >= i + peptide_length {
+                true => &normal_peptide[i..(i + peptide_length)],
+                false => &normal_peptide,
             };
             debug!(
-                "neopeptide {}, wtpeptide {}",
-                &String::from_utf8_lossy(n_peptide),
-                &String::from_utf8_lossy(w_peptide)
+                "tumor_pep {}, normal_pep {}",
+                &String::from_utf8_lossy(tumor_pep),
+                &String::from_utf8_lossy(normal_pep)
             );
             // skip smaller peptides not containing a somatic variant
-            if w_peptide.is_empty() && som_pos > 0 {
+            if normal_pep.is_empty() && som_pos > 0 {
                 match orientation {
                     "Forward" => {
                         if ((i + peptide_length) * 3) + offset <= som_pos {
@@ -326,7 +330,7 @@ pub fn filter<F: io::Read, O: io::Write>(
                         }
                     }
                     "Reverse" => {
-                        if (neopeptide.len() - (i + peptide_length)) * 3 + offset > som_pos {
+                        if (tumor_peptide.len() - (i + peptide_length)) * 3 + offset > som_pos {
                             i += 1;
                             continue;
                         }
@@ -336,7 +340,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
             i += 1;
             // remove self-similar peptides
-            if n_peptide == w_peptide {
+            if tumor_pep == normal_pep {
                 continue;
             }
             // check if we already saw this peptide in this transcript
@@ -352,10 +356,10 @@ pub fn filter<F: io::Read, O: io::Write>(
             ) == current
             {
                 debug!("Current: {:?}", current);
-                if seen_peptides.contains(&String::from_utf8_lossy(n_peptide).to_string()) {
+                if seen_peptides.contains(&String::from_utf8_lossy(tumor_pep).to_string()) {
                     //let row2 = row.clone();
                     //removed_writer.serialize(row2)?;
-                    debug!("Already Seen: {}", &String::from_utf8_lossy(n_peptide));
+                    debug!("Already Seen: {}", &String::from_utf8_lossy(tumor_pep));
                     continue;
                 }
             } else {
@@ -373,8 +377,8 @@ pub fn filter<F: io::Read, O: io::Write>(
                     germline_vars.to_string(),
                 );
             }
-            debug!("{}", &String::from_utf8_lossy(n_peptide));
-            let current_peptide = String::from_utf8_lossy(n_peptide);
+            debug!("{}", &String::from_utf8_lossy(tumor_pep));
+            let current_peptide = String::from_utf8_lossy(tumor_pep);
             seen_peptides.insert(current_peptide.to_string());
             let mut row2 = row.clone();
             //row2.id = id.replace("F", &i.to_string()).replace("R", &i.to_string());
@@ -386,8 +390,8 @@ pub fn filter<F: io::Read, O: io::Write>(
             let current_depth = row2.depth;
             let value_tuple = (
                 row2,
-                String::from_utf8_lossy(n_peptide).to_string(),
-                String::from_utf8_lossy(w_peptide).to_string(),
+                String::from_utf8_lossy(tumor_pep).to_string(),
+                String::from_utf8_lossy(normal_pep).to_string(),
             );
             //let active_variants = (vars.to_string(), germline_vars.to_string());
             if current_sites != region_sites {
@@ -471,43 +475,43 @@ pub fn filter<F: io::Read, O: io::Write>(
                         counter += 1;
                     }
 
-                    for (row, np, wp) in entries {
-                        let n_peptide = np.as_bytes();
-                        let w_peptide = wp.as_bytes();
+                    for (row, tumor_p, normal_p) in entries {
+                        let tumor_peptide = tumor_p.as_bytes();
+                        let normal_peptide = normal_p.as_bytes();
                         let mut out_row = row.clone();
                         out_row.freq = match out_row.depth == 0 {
                             true => 0.0,
                             false => ml as f64 * 0.01,
                         };
                         let filtered_row =
-                            FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
-                        debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
+                            FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b), normal_p.clone(), tumor_p.clone());
+                        debug!("Handling Peptide {}", &String::from_utf8_lossy(tumor_peptide));
                         // check if the somatic peptide is present in the reference normal peptidome
-                        match ref_set.contains(n_peptide) {
+                        match ref_set.contains(tumor_peptide) {
                             true => {
                                 removed_fasta_writer.write(
                                     &filtered_row.id.to_string(),
                                     None,
-                                    &n_peptide,
+                                    &tumor_peptide,
                                 )?;
                                 removed_writer.serialize(filtered_row)?;
                                 debug!(
                                     "Removed Peptide due to germline similar: {}",
-                                    &String::from_utf8_lossy(n_peptide)
+                                    &String::from_utf8_lossy(tumor_peptide)
                                 );
                             }
                             false => {
                                 fasta_writer.write(
                                     &filtered_row.id.to_string(),
                                     None,
-                                    &n_peptide,
+                                    &tumor_peptide,
                                 )?;
                                 //if we don't have a matching normal, do not write an empty entry to the output
-                                if !w_peptide.is_empty() {
+                                if !normal_peptide.is_empty() {
                                     normal_writer.write(
                                         &filtered_row.id.to_string(),
                                         None,
-                                        &w_peptide,
+                                        &normal_peptide,
                                     )?;
                                 }
                                 tsv_writer.serialize(filtered_row)?;
@@ -535,7 +539,7 @@ pub fn filter<F: io::Read, O: io::Write>(
             } else {
                 debug!(
                     "Adding to record list {}",
-                    &String::from_utf8_lossy(n_peptide)
+                    &String::from_utf8_lossy(tumor_pep)
                 );
                 //if current_depth > 0 {
                 depth
@@ -646,31 +650,31 @@ pub fn filter<F: io::Read, O: io::Write>(
             }
             counter += 1;
         }
-        for (row, np, wp) in entries {
-            let n_peptide = np.as_bytes();
-            let w_peptide = wp.as_bytes();
+        for (row, tumor_pep, normal_pep) in entries {
+            let tumor_peptide = tumor_pep.as_bytes();
+            let normal_peptide = normal_pep.as_bytes();
             let mut out_row = row.clone();
             out_row.freq = match out_row.depth == 0 {
                 true => 0.0,
                 false => ml as f64 * 0.01,
             };
-            let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b));
-            debug!("Handling Peptide {}", &String::from_utf8_lossy(n_peptide));
+            let filtered_row = FilteredRecord::create(out_row, format!("{:.2}-{:.2}", a, b), normal_pep.clone(), tumor_pep.clone());
+            debug!("Handling Peptide {}", &String::from_utf8_lossy(tumor_peptide));
             // check if the somatic peptide is present in the reference normal peptidome
-            match ref_set.contains(n_peptide) {
+            match ref_set.contains(tumor_peptide) {
                 true => {
-                    removed_fasta_writer.write(&filtered_row.id.to_string(), None, &n_peptide)?;
+                    removed_fasta_writer.write(&filtered_row.id.to_string(), None, &tumor_peptide)?;
                     removed_writer.serialize(filtered_row)?;
                     debug!(
                         "Removed Peptide due to germline similar: {}",
-                        &String::from_utf8_lossy(n_peptide)
+                        &String::from_utf8_lossy(tumor_peptide)
                     );
                 }
                 false => {
-                    fasta_writer.write(&filtered_row.id.to_string(), None, &n_peptide)?;
+                    fasta_writer.write(&filtered_row.id.to_string(), None, &tumor_peptide)?;
                     //if we don't have a matching normal, do not write an empty entry to the output
-                    if !w_peptide.is_empty() {
-                        normal_writer.write(&filtered_row.id.to_string(), None, &w_peptide)?;
+                    if !normal_peptide.is_empty() {
+                        normal_writer.write(&filtered_row.id.to_string(), None, &normal_peptide)?;
                     }
                     tsv_writer.serialize(filtered_row)?;
                 }
