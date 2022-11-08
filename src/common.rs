@@ -63,7 +63,8 @@ impl Variant {
         if unsupported_allele_warning_only {
             warn!("{}", msg)
         } else {
-            error!("{}", msg)
+            error!("{}", msg);
+            panic!("{}", msg)
         }
     }
 
