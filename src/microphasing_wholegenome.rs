@@ -489,7 +489,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     window_len: u64,
     refseq: &mut Vec<u8>,
     only_relevant: bool,
-    unsupported_alleles_warning_only: bool,
+    unsupported_allele_warning_only: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut chunk = 0;
     while chunk < sequence.len - 1000000 {
@@ -525,7 +525,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
             .map(|rec| {
                 variant_tree.insert(
                     rec.pos() as u64,
-                    Variant::new(rec, unsupported_alleles_warning_only).unwrap(),
+                    Variant::new(rec, unsupported_allele_warning_only).unwrap(),
                 )
             })
             .collect_vec();
@@ -785,7 +785,7 @@ pub fn phase<F: io::Read + io::Seek, O: io::Write>(
     normal_writer: &mut fasta::Writer<fs::File>,
     window_len: u64,
     only_relevant: bool,
-    unsupported_alleles_warning_only: bool,
+    unsupported_allele_warning_only: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
@@ -804,7 +804,7 @@ pub fn phase<F: io::Read + io::Seek, O: io::Write>(
             window_len,
             &mut refseq,
             only_relevant,
-            unsupported_alleles_warning_only,
+            unsupported_allele_warning_only,
         )?;
     }
     Ok(())

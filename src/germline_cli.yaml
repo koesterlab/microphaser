@@ -38,7 +38,7 @@ args:
       short: w
       default_value: "27"
       help: Length of generated haplotypes.
-  - unsupported-alleles-warning-only:
+  - unsupported-allele-warning-only:
       long: unsupported-allele-warning-only
       short: u
       help: When encountering an unsupported allele, microphaser currently

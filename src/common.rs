@@ -59,8 +59,8 @@ pub enum Variant {
 }
 
 impl Variant {
-    fn warn_or_error(msg: &str, unsupported_alleles_warning_only: bool) {
-        if unsupported_alleles_warning_only {
+    fn warn_or_error(msg: &str, unsupported_allele_warning_only: bool) {
+        if unsupported_allele_warning_only {
             warn!("{}", msg)
         } else {
             error!("{}", msg)
@@ -69,7 +69,7 @@ impl Variant {
 
     pub fn new(
         rec: &mut bcf::Record,
-        unsupported_alleles_warning_only: bool,
+        unsupported_allele_warning_only: bool,
     ) -> Result<Vec<Self>, Box<dyn Error>> {
         let is_germline = !rec.info(b"SOMATIC").flag().unwrap_or(false);
 
@@ -136,13 +136,13 @@ impl Variant {
                                 });
                             }
                             Err(msg) => {
-                                Variant::warn_or_error(msg, unsupported_alleles_warning_only)
+                                Variant::warn_or_error(msg, unsupported_allele_warning_only)
                             }
                         };
                     } else {
                         Variant::warn_or_error(
                             format!("Alternative allele type '{a:?}' not yet supported, but found on contig {contig} at position {pos}. Please open a respective pull request or issue at https://github.com/koesterlab/microphaser").as_str(),
-                            unsupported_alleles_warning_only
+                            unsupported_allele_warning_only
                         )
                     }
                 } else {

@@ -656,7 +656,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
     fasta_writer: &mut fasta::Writer<O>,
     window_len: u64,
     refseq: &mut Vec<u8>,
-    unsupported_alleles_warning_only: bool,
+    unsupported_allele_warning_only: bool,
 ) -> Result<(), Box<dyn Error>> {
     // if an exon is near to the gene end, a deletion could cause refseq to overflow, so we increase the length of refseq
     let end_overflow = 100;
@@ -692,7 +692,7 @@ pub fn phase_gene<F: io::Read + io::Seek, O: io::Write>(
         .map(|rec| {
             variant_tree.insert(
                 rec.pos() as u64,
-                Variant::new(rec, unsupported_alleles_warning_only).unwrap(),
+                Variant::new(rec, unsupported_allele_warning_only).unwrap(),
             )
         })
         .collect_vec();
@@ -1286,7 +1286,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     tsv_writer: &mut csv::Writer<fs::File>,
     fasta_writer: &mut fasta::Writer<O>,
     window_len: u64,
-    unsupported_alleles_warning_only: bool,
+    unsupported_allele_warning_only: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut read_buffer = bam::RecordBuffer::new(bam_reader, false);
     let mut variant_buffer = bcf::buffer::RecordBuffer::new(bcf_reader);
@@ -1307,7 +1307,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                     fasta_writer,
                     window_len,
                     &mut refseq,
-                    unsupported_alleles_warning_only,
+                    unsupported_allele_warning_only,
                 )?;
             }
         }
