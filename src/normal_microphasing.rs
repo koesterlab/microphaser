@@ -1295,41 +1295,49 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
     debug!("Stared Phasing");
     let mut gene = None;
     let mut start_codon_found = false;
-    let mut phase_last_gene = |gene: Option<Gene>| -> Result<(), Box<dyn Error>> {
-        if let Some(ref gene) = gene {
-            if gene.biotype == "protein_coding" {
-                phase_gene(
-                    &gene,
-                    fasta_reader,
-                    &mut read_buffer,
-                    &mut variant_buffer,
-                    tsv_writer,
-                    fasta_writer,
-                    window_len,
-                    &mut refseq,
-                    unsupported_alleles_warning_only,
-                )?;
-            }
+    let mut phase_last_gene = |gene: &Gene| -> Result<(), Box<dyn Error>> {
+        if gene.biotype == "protein_coding" {
+            phase_gene(
+                &gene,
+                fasta_reader,
+                &mut read_buffer,
+                &mut variant_buffer,
+                tsv_writer,
+                fasta_writer,
+                window_len,
+                &mut refseq,
+                unsupported_alleles_warning_only,
+            )?;
         }
         Ok(())
     };
+    let mut last_chrom: String = "not_yet_set".into();
+    let mut last_start: u64 = 0;
     for record in gtf_reader.records() {
         debug!("New Record!");
         let record = record?;
         match record.feature_type() {
             "gene" => {
                 // first, phase the last gene
-                phase_last_gene(gene)?;
+                if let Some(ref g) = gene {
+                    phase_last_gene(g)?;
+                    last_chrom = g.chrom.to_owned();
+                    last_start = g.start();
+                }
                 debug!("Gene found");
+                let gene_name = record
+                        .attributes()
+                        .get("gene_name")
+                        .expect("missing gene_name in GTF");
+                if last_chrom == record.seqname() {
+                    assert!(last_start <= *record.start(), "Your GTF file is not sorted correctly. Gene {} starts at {}, while previous gene record started at {}.", gene_name, *record.start(), last_start);
+                }
                 gene = Some(Gene::new(
                     record
                         .attributes()
                         .get("gene_id")
                         .expect("missing gene_id in GTF"),
-                    record
-                        .attributes()
-                        .get("gene_name")
-                        .expect("missing gene_name in GTF"),
+                    gene_name,
                     record.seqname(),
                     Interval::new(
                         *record.start() as u64 - 1,
@@ -1424,7 +1432,9 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
             _ => continue,
         }
     }
-    phase_last_gene(gene)?;
+    if let Some(ref g) = gene {
+        phase_last_gene(g)?;
+    }
 
     Ok(())
 }
