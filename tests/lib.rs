@@ -381,7 +381,6 @@ fn unsorted_gtf_test() {
     assert!(status_sorted.unwrap().success());
 }
 
-
 /* #[test]
 fn three_way_splice() {
    fs::create_dir("tests/output");

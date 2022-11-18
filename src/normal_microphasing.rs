@@ -1326,9 +1326,9 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                 }
                 debug!("Gene found");
                 let gene_name = record
-                        .attributes()
-                        .get("gene_name")
-                        .expect("missing gene_name in GTF");
+                    .attributes()
+                    .get("gene_name")
+                    .expect("missing gene_name in GTF");
                 if last_chrom == record.seqname() {
                     assert!(last_start <= *record.start(), "Your GTF file is not sorted correctly. Gene {} starts at {}, while previous gene record started at {}.", gene_name, *record.start(), last_start);
                 }
