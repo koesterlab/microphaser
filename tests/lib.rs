@@ -341,6 +341,47 @@ fn splice_test_reverse() {
     );
 }
 
+#[test]
+fn unsorted_gtf_test() {
+    fs::create_dir("tests/output");
+    let reference = download_reference("chr14");
+    let status_unsorted = Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            "RUST_BACKTRACE=1 target/debug/microphaser somatic \
+             tests/resources/test_unsorted_gtf/forward_test.bam \
+             --variants tests/resources/test_unsorted_gtf/empty.vcf \
+             --tsv tests/output/test_unsorted_gtf.unsorted.tsv \
+             --normal-output tests/output/test_unsorted_gtf.unsorted.normal.fa \
+             --ref {} \
+            > tests/output/test_unsorted_gtf.unsorted.tumor.fa \
+            < tests/resources/test_unsorted_gtf/chr14.unsorted.BDKRB2_DHRS2.gtf",
+            reference
+        ))
+        .spawn()
+        .unwrap()
+        .wait();
+    assert!(!status_unsorted.unwrap().success());
+    let status_sorted = Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            "RUST_BACKTRACE=1 target/debug/microphaser somatic \
+             tests/resources/test_unsorted_gtf/forward_test.bam \
+             --variants tests/resources/test_unsorted_gtf/empty.vcf \
+             --tsv tests/output/test_unsorted_gtf.sorted.tsv \
+             --normal-output tests/output/test_unsorted_gtf.sorted.normal.fa \
+             --ref {} \
+            > tests/output/test_unsorted_gtf.sorted.tumor.fa \
+            < tests/resources/test_unsorted_gtf/chr14.sorted.DHRS2_BDKRB2.gtf",
+            reference
+        ))
+        .spawn()
+        .unwrap()
+        .wait();
+    assert!(status_sorted.unwrap().success());
+}
+
+
 /* #[test]
 fn three_way_splice() {
    fs::create_dir("tests/output");
