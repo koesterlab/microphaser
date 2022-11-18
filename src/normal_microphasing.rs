@@ -1306,7 +1306,7 @@ pub fn phase<F: io::Read + io::Seek, G: io::Read, O: io::Write>(
                 fasta_writer,
                 window_len,
                 &mut refseq,
-                unsupported_alleles_warning_only,
+                unsupported_allele_warning_only,
             )?;
         }
         Ok(())
